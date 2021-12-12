@@ -1,0 +1,7 @@
+tensorflow
+tensorflow_probability
+numpy
+gym
+pyglet
+box2d
+matplotlib
