@@ -19,7 +19,7 @@ from CONFIGS import REINFORCE_CONFIG
 
 class REINFORCE():
 
-    def __init__(self, memory, actor, metrics, config = REINFORCE_CONFIG):
+    def __init__(self, memory, actor, metrics = [], config = REINFORCE_CONFIG):
         self.metrics = list(Metric(self) for Metric in metrics)
         self.step = 0
         self.memory = memory
@@ -35,32 +35,32 @@ class REINFORCE():
         observations = tf.expand_dims(observation, axis=0)  #(1, n_obs)
         probs = self.actor(observations)                    #(1, n_actions)
         probs = tfp.distributions.Categorical(probs=probs)  #categorical(1,n_actions)
-        action = probs.sample()[0].numpy()                  #
+        action = probs.sample()[0].numpy()                  
         return action
 
     def learn(self):
         metrics = list()
         self.step += 1
 
-        observations, actions, rewards, dones, next_observations = self.memory.sample(
+        observations, actions, rewards, dones, next_observations = self.memory.sample(      #(T, ?)
             method='all')
-
+        print("Learning !")
         if dones[-1]:
-            ep_length = rewards.shape[0]
-            actions = tf.expand_dims(
+            ep_length = rewards.shape[0]                            #T
+            actions = tf.expand_dims(                               #(T,)
                 tf.constant(actions), axis=-1)
-            action_inds = tf.expand_dims(tf.range(0, ep_length), axis=-1)
-            action_inds = tf.concat((action_inds, actions), axis=-1)
+            action_inds = tf.expand_dims(tf.range(0, ep_length), axis=-1)   #(T, 1) , [[0], [1], ... [T-1]]
+            action_inds = tf.concat((action_inds, actions), axis=-1)        #(T, 2)
             G = [rewards[-1].numpy()]
             for i in range(1, ep_length):
                 prev_G = self.gamma * rewards[-i-1].numpy() + G[-i]
                 G.insert(0, prev_G)
-            G = tf.constant(G, dtype=tf.float32)
+            G = tf.constant(G, dtype=tf.float32)                    #(T,)
 
             with tf.GradientTape() as tape:
-                probs = self.actor(observations, training=True)     # [[PI_θ(a | s) for a in A] for t in episode] de shape (n_batch, n_actions) 
+                probs = self.actor(observations, training=True)     # [[PI_θ(a | s) for a in A] for t in range(T)] of shape (T, n_actions) 
                 log_probs = tf.math.log(probs)                      #   log(PI_θ(a | s))
-                log_probs = tf.gather_nd(log_probs, action_inds)    # (n_batch, n_actions) g_nd (n_batch, 2) = (n_batch,)
+                log_probs = tf.gather_nd(log_probs, action_inds)    # (T, n_actions) g_nd (T, 2) = (T,)
                 loss = - tf.math.multiply(G, log_probs)             # [log(PI_θ(a|s)) * R_future(s) for t in episode]
 
             grads = tape.gradient(loss, self.actor.trainable_weights)
