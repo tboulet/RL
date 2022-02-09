@@ -30,7 +30,6 @@ class REINFORCE():
         self.opt = tf.keras.optimizers.Adam(1e-4)
         self.gamma = 0.99
 
-
     def act(self, observation):
         observations = tf.expand_dims(observation, axis=0)  #(1, n_obs)
         probs = self.actor(observations)                    #(1, n_actions)
@@ -44,7 +43,6 @@ class REINFORCE():
 
         observations, actions, rewards, dones, next_observations = self.memory.sample(      #(T, ?)
             method='all')
-        print("Learning !")
         if dones[-1]:
             ep_length = rewards.shape[0]                            #T
             actions = tf.expand_dims(                               #(T,)

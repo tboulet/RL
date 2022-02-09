@@ -1,7 +1,12 @@
 import gym
 
 def render_agent(agent, env = gym.make("CartPole-v0"), episodes = 10, show_metrics = False):
-    
+    '''Show some episodes of agent performing on env.
+    agent : an agent
+    env : a gym env
+    episodes : number of episodes played
+    show_metrics : boolean whether metrics from agent are printed
+    '''
     for episode in range(episodes):
         done = False
         obs = env.reset()

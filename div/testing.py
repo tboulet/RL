@@ -2,7 +2,10 @@ import sys
 import gym
 
 def test_agent(agent, env = gym.make("CartPole-v0")):
-
+    '''Some test function for didactic purposes.
+    agent : a agent
+    env : a gym env, default CartPole
+    '''
     print("Test 1 : act")
     obs = env.reset()
     try:

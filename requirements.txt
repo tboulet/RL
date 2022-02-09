@@ -1,7 +1,11 @@
 tensorflow
 tensorflow_probability
 numpy
-gym
-pyglet
-box2d
 matplotlib
+
+gym
+box2d 
+box2d-kengz
+gym[all]
+pyglet
+imageio-ffmpeg

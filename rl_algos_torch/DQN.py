@@ -1,5 +1,5 @@
-import tensorflow as tf
-import tensorflow_probability as tfp
+from copy import copy, deepcopy
+from operator import index
 import numpy as np
 import math
 import gym
@@ -7,16 +7,18 @@ import sys
 import random
 import matplotlib.pyplot as plt
 
-from tensorflow.keras import layers as kl
-from tensorflow.keras import initializers as ki
-from tensorflow.keras import losses as klosses
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import torchvision.transforms as T
 
 from MEMORY import Memory
 from CONFIGS import DQN_CONFIG
 
 class DQN():
 
-    def __init__(self, memory, action_value: tf.keras.Model, metrics = [], config = DQN_CONFIG):
+    def __init__(self, memory, action_value : nn.Module, metrics = [], config = DQN_CONFIG):
         self.config = config
         self.memory = memory
         self.step = 0
@@ -24,61 +26,74 @@ class DQN():
         self.metrics = list(Metric(self) for Metric in metrics)
 
         self.action_value = action_value
-        self.action_value_target = tf.keras.models.clone_model(action_value)
-        self.opt = tf.keras.optimizers.Adam(1e-4)
+        self.action_value_target = deepcopy(action_value)
+        self.opt = optim.Adam(lr = 1e-4, params=action_value.parameters())
+        self.opt = optim.RMSprop(params = action_value.parameters())
 
         self.gamma = 0.99
-        self.sample_size = 128
+        self.sample_size = 512
         self.frames_skipped = 1 
         self.history_lenght = 1 #To implement
-        self.double_q_learning = False
-        self.clipping = False #To implement
-        self.reward_scaler = (0., 1.) #(mean, std), R <- (R-mean)/std
-        self.update_method = "soft"
+        self.double_q_learning = True
+        self.clipping = 10
+        self.reward_scaler = (0, 200) #(mean, std), R <- (R-mean)/std
+        self.update_method = "periodic"
         
-        self.train_freq = 1
+        self.train_freq = 4
         self.gradients_steps = 1
-        self.target_update_interval = 1500
+        self.target_update_interval = 5000
         self.tau = 0.99
         
-        self.learning_starts = 2
-        self.exploration_timesteps = 1000
-        self.exploration_initial = 0.1
-        self.exploration_final = 0.1
+        self.learning_starts = 2048
+        self.exploration_timesteps = 50000
+        self.exploration_initial = 1
+        self.exploration_final = 0.05
         self.f_eps = lambda s : max(s.exploration_final, s.exploration_initial + (s.exploration_final - s.exploration_initial) * (s.step / s.exploration_timesteps))
 
     def act(self, observation, greedy=False, mask = None):
-        
+        '''Ask the agent to take a decision given an observation.
+        observation : an (n_obs,) shaped observation.
+        greedy : whether the agent always choose the best Q values according to himself.
+        mask : a binary list containing 1 where corresponding actions are forbidden.
+        return : an int corresponding to an action
+        '''
+
         #Skip frames:
         if self.step % self.frames_skipped != 0:
             return self.last_action
         
         #Batching observation
-        observations = tf.expand_dims(observation, axis = 0) # (1, observation_space)
-
+        observations = torch.Tensor(observation)
+        observations = observations.unsqueeze(0) # (1, observation_space)
+    
         # Q(s)
         Q = self.action_value(observations) # (1, action_space)
 
         #Greedy policy
         epsilon = self.f_eps(self)
         if greedy or np.random.rand() > epsilon:
-            if mask is not None:
-                Q = Q - 10000.0 * tf.constant([mask], dtype = tf.float32)
-            action = tf.argmax(Q, axis = -1, output_type = tf.int32).numpy()[0]
-
+            with torch.no_grad():
+                if mask is not None:
+                    Q = Q - 10000.0 * torch.Tensor([mask])      # So that forbidden action won't ever be selected by the argmax.
+                action = torch.argmax(Q, axis = -1).numpy()[0]  
+    
         #Exploration
         else :
-            action = tf.random.uniform(shape = (1,), minval = 0, maxval = Q.shape[-1], dtype = tf.int32).numpy()[0]
-            if mask is not None:
-                authorized_actions = [i for i in range(len(mask)) if mask[i] == 0]
+            if mask is None:
+                action = torch.randint(size = (1,), low = 0, high = Q.shape[-1]).numpy()[0]     #Choose random action
+            else:
+                authorized_actions = [i for i in range(len(mask)) if mask[i] == 0]              #Choose random action among authorized ones
                 action = random.choice(authorized_actions)
-                
+    
         # Action
         self.last_action = action
         return action
 
 
     def learn(self):
+        '''Do one step of learning.
+        return : metrics, a list of metrics computed during this learning step.
+        '''
         metrics = list()
         
         #Skip frames:
@@ -97,10 +112,13 @@ class DQN():
         #Sample trajectories
         observations, actions, rewards, dones, next_observations = self.memory.sample(
             sample_size=self.sample_size,
-            method = "random"
+            method = "random",
+            func = lambda arr : torch.Tensor(arr),
         )
-        # print(observations, actions, rewards, dones)
-        
+        actions = actions.to(dtype = torch.int64)
+        #print(observations, actions, rewards, dones, sep = '\n\n')
+    
+
         #Scaling the rewards
         if self.reward_scaler is not None:
             mean, std = self.reward_scaler
@@ -108,63 +126,55 @@ class DQN():
         
         # Estimated Q values
         if not self.double_q_learning:
-            #Simple learning : Q(s,a) = R + max(Q_target(s_next))
-            dones = tf.cast(dones, dtype = tf.float32)
-            next_Q_values = tf.math.reduce_max(self.action_value_target(next_observations), axis = -1)
-            expected_Q_values = rewards + self.gamma * next_Q_values * (1 - dones)
+            #Simple learning : Q(s,a) = r + gamma * max_a'(Q_target(s_next, a')) * (1-d)  | s_next and r being the result of action a taken in observation s
+            future_Q_s_a = self.action_value_target(next_observations)
+            future_Q_s, bests_a = torch.max(future_Q_s_a, dim = 1, keepdim=True)
+            Q_s_predicted = rewards + self.gamma * future_Q_s * (1 - dones)  #(n_sampled,)
         else:
-            #Double Q Learning : Q(s,a) = R + Q_target(s_next, argmax_a(Q(s_next, a)))
-            dones = tf.cast(dones, dtype = tf.float32)
-            actions_range = tf.range(len(actions))
-            Q_values_s_next = self.action_value_target(next_observations)
-            Q_values_s = self.action_value(next_observations)
-            actions_indices = tf.argmax(Q_values_s, axis = -1)
-            actions_indices = tf.cast(actions_indices, tf.int32)
-            actions_indices = tf.stack((actions_range, actions_indices), axis = -1)
-            next_Q_values = tf.gather_nd(Q_values_s_next, actions_indices)
-            expected_Q_values = rewards + self.gamma * next_Q_values * (1 - dones)
+            #Double Q Learning : Q(s,a) = r + gamma * Q_target(s_next, argmax_a'(Q(s_next, a')))
+            future_Q_s_a = self.action_value(next_observations)
+            future_Q_s, bests_a = torch.max(future_Q_s_a, dim = 1, keepdim=True)
+            future_Q_s_a_target = self.action_value_target(next_observations)
+            future_Q_s_target = torch.gather(future_Q_s_a_target, dim = 1, index= bests_a)
+            Q_s_predicted = rewards + self.gamma * future_Q_s_target * (1 - dones)
+            # print(future_Q_s_a.shape, bests_a.shape, future_Q_s_a_target.shape, future_Q_s_target.shape, Q_s_predicted.shape, 
+            #       )
+            # raise        
         
-        criterion = klosses.MeanSquaredError()
+        #Gradient descent on Q network
+        criterion = nn.SmoothL1Loss()
         for _ in range(self.gradients_steps):
-            with tf.GradientTape() as tape:
-                actions_range = tf.range(len(actions))
-                actions_range = tf.reshape(actions_range, shape = (-1,1))
-                actions_indices = tf.concat((actions_range, actions), axis = -1)
-                Q_values_s = self.action_value(observations) 
-                Q_values = tf.gather_nd(Q_values_s, actions_indices)
-                loss = criterion(expected_Q_values, Q_values)
-
-            
-            #Batched Gradient descent
-            gradients = tape.gradient(target = loss, sources = self.action_value.trainable_weights)
-            self.opt.apply_gradients(zip(gradients, self.action_value.trainable_weights))
-
-        #Update target every target_update_interval
-        if self.update_method == "interval":
+            self.opt.zero_grad()
+            Q_s_a = self.action_value(observations)
+            Q_s = Q_s_a.gather(dim = 1, index = actions)
+            loss = criterion(Q_s_predicted, Q_s)
+            loss.backward()
+            if self.clipping is not None:
+                for param in self.action_value.parameters():
+                    param.grad.data.clamp_(-self.clipping, self.clipping)
+            self.opt.step() 
+        
+        #Update target network
+        if self.update_method == "periodic":
             if self.step % self.target_update_interval == 0:
                 self.update_target_network()
         elif self.update_method == "soft":
-            phi_target = np.array(self.action_value_target.get_weights(), dtype = object)
-            phi = np.array(self.action_value.get_weights(), dtype= object)
-            self.action_value_target.set_weights(self.tau * phi_target + (1-self.tau) * phi)    
-        elif self.update_method == "periodic":
-            if self.step % self.target_update_interval == 0:
-                phi = np.array(self.action_value.get_weights(), dtype= object)
-                self.action_value_target.set_weights(phi)
-        
+            for phi, phi_target in zip(self.action_value.parameters(), self.action_value_target.parameters()):
+                phi.data = self.tau * phi.data + (1-self.tau) * phi_target.data
+            
         else:
             print(f"Error : update_method {self.update_method} not implemented.")
             sys.exit()
 
         #Metrics
-        return list(metric.on_learn(critic_loss = loss.numpy(), value = tf.reduce_mean(Q_values).numpy()) for metric in self.metrics)
+        return list(metric.on_learn(critic_loss = loss.detach().numpy(), value = Q_s.mean().detach().numpy()) for metric in self.metrics)
 
     def remember(self, observation, action, reward, done, next_observation, info={}, **param):
         self.memory.remember((observation, action, reward, done, next_observation, info))
         return list(metric.on_remember(obs = observation, action = action, reward = reward, done = done, next_obs = next_observation) for metric in self.metrics)
 
     def update_target_network(self):
-        self.action_value_target = tf.keras.models.clone_model(self.action_value)
+        self.action_value_target = deepcopy(self.action_value)
 
 
 
@@ -213,9 +223,7 @@ if __name__ == "__main__":
             else:
                 obs = next_obs
 
-            if metrics is not None and metrics != list():
-                print(metrics)
-                raise
+            if metrics is not None:
                 L_loss.append(math.log(metrics["loss"]))
                 L_Q.append(metrics["value"])
             reward_tot += reward
