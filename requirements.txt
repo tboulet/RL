@@ -2,10 +2,10 @@ tensorflow
 tensorflow_probability
 numpy
 matplotlib
+moviepy
 
 gym
-box2d 
-box2d-kengz
+box2d-py
 gym[all]
 pyglet
 imageio-ffmpeg

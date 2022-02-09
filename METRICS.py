@@ -81,3 +81,38 @@ class Metric_Critic_Value(Metric):
             return {"value" : kwargs["value"]}
         except KeyError:
             return dict()
+
+
+class Metric_Critic_Value_Unnormalized(Metric):
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent
+        self.is_normalized = agent.reward_scaler is not None
+        if self.is_normalized:
+            self.mean, self.std = agent.reward_scaler
+        
+    def on_learn(self, **kwargs):
+        try:
+            if self.is_normalized:
+                return {"value_unnormalized" : self.mean + self.std * kwargs["value"]}
+            else:
+                return {"value_unnormalized" : kwargs["value"]}
+        except KeyError:
+            return dict()
+        
+
+class Metric_Count_Episodes(Metric):
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent
+        self.n_episodes = 0
+        
+    def on_remember(self, **kwargs):
+        try:
+            if kwargs["done"]:
+                self.n_episodes += 1
+                return {"n_episodes" : self.n_episodes}
+            else:
+                return dict()
+        except KeyError:
+            return dict()

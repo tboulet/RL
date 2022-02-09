@@ -28,24 +28,24 @@ class DQN():
         self.action_value = action_value
         self.action_value_target = deepcopy(action_value)
         self.opt = optim.Adam(lr = 1e-4, params=action_value.parameters())
-        self.opt = optim.RMSprop(params = action_value.parameters())
+        self.opt = optim.Adam(params = action_value.parameters(), lr=1e-4)
 
         self.gamma = 0.99
         self.sample_size = 512
         self.frames_skipped = 1 
         self.history_lenght = 1 #To implement
-        self.double_q_learning = True
+        self.double_q_learning = False
         self.clipping = 10
-        self.reward_scaler = (0, 200) #(mean, std), R <- (R-mean)/std
-        self.update_method = "periodic"
+        self.reward_scaler = (0, 500) #(mean, std), R <- (R-mean)/std
+        self.update_method = "soft"
         
         self.train_freq = 4
-        self.gradients_steps = 1
+        self.gradients_steps = 4
         self.target_update_interval = 5000
         self.tau = 0.99
         
         self.learning_starts = 2048
-        self.exploration_timesteps = 50000
+        self.exploration_timesteps = 10000
         self.exploration_initial = 1
         self.exploration_final = 0.05
         self.f_eps = lambda s : max(s.exploration_final, s.exploration_initial + (s.exploration_final - s.exploration_initial) * (s.step / s.exploration_timesteps))
@@ -148,7 +148,7 @@ class DQN():
             Q_s_a = self.action_value(observations)
             Q_s = Q_s_a.gather(dim = 1, index = actions)
             loss = criterion(Q_s_predicted, Q_s)
-            loss.backward()
+            loss.backward(retain_graph = True)
             if self.clipping is not None:
                 for param in self.action_value.parameters():
                     param.grad.data.clamp_(-self.clipping, self.clipping)
