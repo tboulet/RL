@@ -1,3 +1,4 @@
+from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -14,23 +15,30 @@ import numpy as np
 
 import gym
 from gym.wrappers import Monitor, RecordVideo
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 import wandb
-
-from config import project, entity
+from wandb.integration.sb3 import WandbCallback
+import wandb
 
 def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True):
     print("Run starts.")
     
     config = agent.config
     if wandb_cb: 
-        run = wandb.init(project="RL", 
-                        entity="timotheboulet",
+        try:
+            from config import project, entity
+        except ImportError:
+            raise Exception("You need to specify your WandB ids in config.py\nConfig template is available at div/config_template.py")
+        run = wandb.init(project=project, 
+                        entity=entity,
                         config=config
                         )
     if video_cb:
         n_step_save_video = 10000
         videos_path = "./div/videos/rl-video/"
         env = RecordVideo(env, video_folder=videos_path, step_trigger=lambda step: step % n_step_save_video == 0)
+        # env = XX(env, videos_path, video_callable=lambda step: step % n_step_save_video == 0)
     if plt_cb:
         logs = dict()
         
@@ -77,3 +85,48 @@ def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True):
     
     if wandb_cb: run.finish()
     print("End of run.")
+    
+
+
+def run_for_sb3(create_agent, config, env, episodes, wandb_cb = True, video_cb = True):
+    print("Run for SB3 agent starts.")
+    
+    env1 = deepcopy(env)
+    def make_env():
+        env2 = deepcopy(env1)
+        env2.reset()
+        env2 = Monitor(env2) 
+        return env2
+    env = DummyVecEnv([make_env])
+    
+    #Wandb
+    if wandb_cb: 
+        try:
+            from config import project, entity
+        except ImportError:
+            raise Exception("You need to specify your WandB ids in config.py\nConfig template is available at div/config_template.py")
+        run = wandb.init(project=project, 
+                        entity=entity,
+                        sync_tensorboard=True,
+                        monitor_gym=True,
+                        config=config
+                        )
+    #Save videos of agent
+    if video_cb:
+        n_save = 1000
+        video_path = f"div/videos/rl-videos-sb3/{run.id}"
+        env = VecVideoRecorder(env, video_folder= video_path, record_video_trigger=lambda x: x % n_save == 0, video_length=200)
+
+    agent = create_agent(env = env)
+    agent.learn(total_timesteps=config["total_timesteps"], 
+                callback=WandbCallback(
+                    gradient_save_freq=100,
+                    model_save_path=f"div/models/{run.id}",
+                    verbose=2,
+            ) if wandb_cb else None,
+        )
+            
+    
+    if wandb_cb: run.finish()
+    print("End of run.")
+    return agent

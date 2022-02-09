@@ -9,3 +9,6 @@ pip install gym
 pip install box2d-py
 
 ATARI:
+
+
+MUJOCO:

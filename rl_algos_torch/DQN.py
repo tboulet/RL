@@ -23,8 +23,7 @@ class DQN():
         self.memory = memory
         self.step = 0
         self.last_action = None
-        self.metrics = list(Metric(self) for Metric in metrics)
-
+        
         self.action_value = action_value
         self.action_value_target = deepcopy(action_value)
         self.opt = optim.Adam(lr = 1e-4, params=action_value.parameters())
@@ -49,7 +48,9 @@ class DQN():
         self.exploration_initial = 1
         self.exploration_final = 0.05
         self.f_eps = lambda s : max(s.exploration_final, s.exploration_initial + (s.exploration_final - s.exploration_initial) * (s.step / s.exploration_timesteps))
-
+        self.metrics = list(Metric(self) for Metric in metrics)
+        
+        
     def act(self, observation, greedy=False, mask = None):
         '''Ask the agent to take a decision given an observation.
         observation : an (n_obs,) shaped observation.

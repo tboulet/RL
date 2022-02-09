@@ -4,6 +4,7 @@ numpy
 matplotlib
 moviepy
 
+stable-baselines3[extra]
 gym
 box2d-py
 gym[all]

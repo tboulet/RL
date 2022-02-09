@@ -5,6 +5,8 @@ videos*
 figures
 wandb
 rbdl
+config
+models
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

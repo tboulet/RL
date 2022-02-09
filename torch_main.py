@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import gym
-from gym.wrappers import Monitor, RecordVideo
 import wandb
 
 from div.render import render_agent
@@ -61,6 +60,7 @@ if __name__ == "__main__":
 
     #AGENT
     agent = DQN(memory = memory, action_value=action_value, metrics = metrics)
+    print(agent)
     #agent = REINFORCE(memory=memory, actor=actor, metrics=metrics)
     
     #RUN
