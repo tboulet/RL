@@ -1,5 +1,8 @@
 tensorflow
 tensorflow_probability
+torch
+torchvision
+torchaudio
 numpy
 matplotlib
 moviepy
@@ -10,3 +13,4 @@ box2d-py
 gym[all]
 pyglet
 imageio-ffmpeg
+wandb

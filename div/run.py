@@ -14,17 +14,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import gym
-from gym.wrappers import Monitor, RecordVideo
+from gym.wrappers import Monitor as GymMonitor
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 import wandb
 from wandb.integration.sb3 import WandbCallback
 import wandb
 
-def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True):
+def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True, n_ep_save_video = 100):
+    
     print("Run starts.")
     
     config = agent.config
+################### FEEDBACK #####################
     if wandb_cb: 
         try:
             from config import project, entity
@@ -35,36 +37,27 @@ def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True):
                         config=config
                         )
     if video_cb:
-        n_step_save_video = 10000
         videos_path = "./div/videos/rl-video/"
-        env = RecordVideo(env, video_folder=videos_path, step_trigger=lambda step: step % n_step_save_video == 0)
-        # env = XX(env, videos_path, video_callable=lambda step: step % n_step_save_video == 0)
+        env = GymMonitor(env, videos_path, video_callable=lambda ep: ep % n_ep_save_video == 0, force = True)
     if plt_cb:
         logs = dict()
+##################### END FEEDBACK ###################
+
         
-    k = 0
     for episode in range(1, episodes+1):
-        k += 1
         done = False
         obs = env.reset()
         
         while not done:
             action = agent.act(obs)
             next_obs, reward, done, info = env.step(action)
-            # print(obs, action, reward, done)
             metrics1 = agent.remember(obs, action, reward, done, next_obs, info)
             metrics2 = agent.learn()
             
-            if video_cb and wandb_cb:
-                if agent.step % n_step_save_video == 0:
-                    path = f'./div/videos/rl-video/rl-video-step-{agent.step}.mp4'
-                    wandb.log({"gameplay": wandb.Video(path, fps = 4, format="gif")}, step = agent.step)
-
-            #Feedback
+            ###### Feedback ######
             for metric in metrics1 + metrics2:
                 if wandb_cb:
                     wandb.log(metric, step = agent.step)
-            
                 if plt_cb:
                     for key, value in metric.items():
                         try:
@@ -76,7 +69,8 @@ def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True):
                         plt.plot(logs[key]["steps"][-100:], logs[key]["values"][-100:], '-b')
                         plt.title(key)
                         plt.savefig(f"figures/{key}")
-                    
+            ######  End Feedback ######  
+            
             #If episode ended.
             if done:
                 break
@@ -113,9 +107,9 @@ def run_for_sb3(create_agent, config, env, episodes, wandb_cb = True, video_cb =
                         )
     #Save videos of agent
     if video_cb:
-        n_save = 1000
+        n_save = 5000
         video_path = f"div/videos/rl-videos-sb3/{run.id}"
-        env = VecVideoRecorder(env, video_folder= video_path, record_video_trigger=lambda x: x % n_save == 0, video_length=200)
+        env = VecVideoRecorder(env, video_folder= video_path, record_video_trigger=lambda step: step % n_save == 0)
 
     agent = create_agent(env = env)
     agent.learn(total_timesteps=config["total_timesteps"], 

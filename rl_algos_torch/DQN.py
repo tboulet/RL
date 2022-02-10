@@ -1,5 +1,4 @@
 from copy import copy, deepcopy
-from operator import index
 import numpy as np
 import math
 import gym
@@ -27,7 +26,6 @@ class DQN():
         self.action_value = action_value
         self.action_value_target = deepcopy(action_value)
         self.opt = optim.Adam(lr = 1e-4, params=action_value.parameters())
-        self.opt = optim.Adam(params = action_value.parameters(), lr=1e-4)
 
         self.gamma = 0.99
         self.sample_size = 512
@@ -138,9 +136,6 @@ class DQN():
             future_Q_s_a_target = self.action_value_target(next_observations)
             future_Q_s_target = torch.gather(future_Q_s_a_target, dim = 1, index= bests_a)
             Q_s_predicted = rewards + self.gamma * future_Q_s_target * (1 - dones)
-            # print(future_Q_s_a.shape, bests_a.shape, future_Q_s_a_target.shape, future_Q_s_target.shape, Q_s_predicted.shape, 
-            #       )
-            # raise        
         
         #Gradient descent on Q network
         criterion = nn.SmoothL1Loss()
@@ -158,7 +153,7 @@ class DQN():
         #Update target network
         if self.update_method == "periodic":
             if self.step % self.target_update_interval == 0:
-                self.update_target_network()
+                self.action_value_target = deepcopy(self.action_value)
         elif self.update_method == "soft":
             for phi, phi_target in zip(self.action_value.parameters(), self.action_value_target.parameters()):
                 phi.data = self.tau * phi.data + (1-self.tau) * phi_target.data
@@ -173,70 +168,5 @@ class DQN():
     def remember(self, observation, action, reward, done, next_observation, info={}, **param):
         self.memory.remember((observation, action, reward, done, next_observation, info))
         return list(metric.on_remember(obs = observation, action = action, reward = reward, done = done, next_obs = next_observation) for metric in self.metrics)
-
-    def update_target_network(self):
-        self.action_value_target = deepcopy(self.action_value)
-
-
-
-if __name__ == "__main__":
-
-    env = gym.make("CartPole-v0")
-
-    action_value = tf.keras.models.Sequential([
-        kl.Dense(16, activation='tanh'),
-        kl.Dense(16, activation='tanh'),
-        kl.Dense(env.action_space.n, activation='linear')
-    ])
-
-    MEMORY_KEYS = ['observation', 'action',
-                       'reward', 'done', 'next_observation']
-    memory = Memory(MEMORY_KEYS=MEMORY_KEYS, max_memory_len=40960)
-
-    agent = DQN(memory=memory, action_value=action_value)  
-    
-
-    #sys.exit()
-
-
-
-    episodes = 1000
-    L_rewards_tot = list()
-    L_loss = list()
-    L_Q = list()
-    moy = lambda L : sum(L) / len(L)
-    reward_tot = 0
-    plt.figure()
-    plt.ion()
-
-    obs = env.reset()
-    for episode in range(episodes):
-        done = False
-        reward_tot = 0
-
-        while not done:
-            action = agent.act(obs)
-            next_obs, reward, done, info = env.step(action)
-            agent.remember(obs, action, reward, done, next_obs, info)
-            metrics = agent.learn()
-            if done:
-                obs = env.reset()
-            else:
-                obs = next_obs
-
-            if metrics is not None:
-                L_loss.append(math.log(metrics["loss"]))
-                L_Q.append(metrics["value"])
-            reward_tot += reward
-
-        L_rewards_tot.append(reward_tot)
-        plt.clf()
-        plt.plot(L_rewards_tot[-100:], label = "total reward")
-        plt.plot(L_loss[-100:], label = "critic loss (log)")
-        plt.plot(L_Q[-100:], label = "mean Q value")
-        plt.legend()
-        plt.show()
-        plt.pause(1e-3)
-        
 
     

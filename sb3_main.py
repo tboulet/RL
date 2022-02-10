@@ -26,8 +26,6 @@ from METRICS import *
 from rl_algos_torch.DQN import DQN
 
 
-
-
 if __name__ == "__main__":
     #ENV
     env = gym.make("Acrobot-v1")
