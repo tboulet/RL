@@ -70,8 +70,7 @@ if __name__ == "__main__":
     
     #RUN
     render_agent(agent, env, show_metrics=True, episodes=2)
-    run(agent, env, episodes=1000, wandb_cb = True, plt_cb=False, video_cb = False)
-    
+    run(agent, env, episodes=1000, wandb_cb = True, plt_cb=False, video_cb = True)    
 
 
 

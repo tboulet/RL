@@ -166,6 +166,10 @@ class DQN():
         return list(metric.on_learn(critic_loss = loss.detach().numpy(), value = Q_s.mean().detach().numpy()) for metric in self.metrics)
 
     def remember(self, observation, action, reward, done, next_observation, info={}, **param):
+        '''Save elements inside memory.
+        *arguments : elements to remember, as numerous and in the same order as in self.memory.MEMORY_KEYS
+        return : metrics, a list of metrics computed during this remembering step.
+        '''
         self.memory.remember((observation, action, reward, done, next_observation, info))
         return list(metric.on_remember(obs = observation, action = action, reward = reward, done = done, next_obs = next_observation) for metric in self.metrics)
 

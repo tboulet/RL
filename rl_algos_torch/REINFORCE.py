@@ -69,7 +69,8 @@ class REINFORCE():
         #Skip frames:
         if self.step % self.frames_skipped != 0:
             return metrics
-
+        self.step += 1
+        
         #Sample trajectories
         observations, actions, rewards, dones, next_observations = self.memory.sample(
             method = "all",
@@ -80,10 +81,7 @@ class REINFORCE():
         #Learn only at end of episode
         if not dones[-1]:
             return metrics
-        
-        
-        #print(observations, actions, rewards, dones, sep = '\n\n')
-    
+            
         #Scaling the rewards
         if self.reward_scaler is not None:
             mean, std = self.reward_scaler
@@ -116,6 +114,10 @@ class REINFORCE():
         return list(metric.on_learn(actor_loss = loss.detach().numpy()) for metric in self.metrics)
 
     def remember(self, observation, action, reward, done, next_observation, info={}, **param):
+        '''Save elements inside memory.
+        *arguments : elements to remember, as numerous and in the same order as in self.memory.MEMORY_KEYS
+        return : metrics, a list of metrics computed during this remembering step.
+        '''
         self.memory.remember((observation, action, reward, done, next_observation, info))
         return list(metric.on_remember(obs = observation, action = action, reward = reward, done = done, next_obs = next_observation) for metric in self.metrics)
 

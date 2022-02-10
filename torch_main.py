@@ -31,7 +31,7 @@ if __name__ == "__main__":
     #ENV
     env = gym.make("CartPole-v0")
     # env = gym.make("LunarLander-v2")
-    # env = gym.make("Acrobot-v1")
+    env = gym.make("Acrobot-v1")
     #MEMORY
     MEMORY_KEYS = ['observation', 'action','reward', 'done', 'next_observation']
     memory = Memory(MEMORY_KEYS=MEMORY_KEYS)
@@ -60,10 +60,10 @@ if __name__ == "__main__":
 
     #AGENT
     agent = DQN(memory = memory, action_value=action_value, metrics = metrics)
-    agent = REINFORCE(memory=memory, actor=actor, metrics=metrics)
+    # agent = REINFORCE(memory=memory, actor=actor, metrics=metrics)
     
     #RUN
-    run(agent, env, episodes=10000, wandb_cb = True, plt_cb=False, video_cb = True)
+    run(agent, env, episodes=10000, wandb_cb = True, plt_cb=True, video_cb = True)
     render_agent(agent, env)
 
 

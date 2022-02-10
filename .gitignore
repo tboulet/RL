@@ -7,7 +7,6 @@ wandb
 rbdl
 config
 models
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

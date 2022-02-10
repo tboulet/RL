@@ -9,6 +9,7 @@ moviepy
 
 stable-baselines3[extra]
 gym
+gym-super-mario-bros
 box2d-py
 gym[all]
 pyglet
