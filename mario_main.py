@@ -22,7 +22,7 @@ from MEMORY import Memory
 from METRICS import *
 
 from rl_algos_torch.DQN import DQN
-
+from rl_algos_torch.REINFORCE import REINFORCE
 
 class ObservationMarioWrapper(gym.ObservationWrapper):
     def __init__(self, env):
@@ -36,13 +36,25 @@ class ObservationMarioWrapper(gym.ObservationWrapper):
 
 if __name__ == "__main__":
     #ENV
-    env = load_smb_env(obs_complexity=1, action_complexity=2)
+    env = load_smb_env(obs_complexity=1, action_complexity=1)
     env = ObservationMarioWrapper(env)
     #MEMORY
     MEMORY_KEYS = ['observation', 'action','reward', 'done', 'next_observation']
     memory = Memory(MEMORY_KEYS=MEMORY_KEYS)
     #METRICS
     metrics = [Metric_Total_Reward, Metric_Epsilon, Metric_Actor_Loss, Metric_Critic_Loss, Metric_Critic_Value]
+    
+    #ACTOR PI
+    n_channels = 3
+    n_actions = env.action_space.n
+    actor = nn.Sequential(
+        nn.Conv2d(n_channels, 8, 3),
+        nn.Tanh(),
+        nn.Conv2d(8, 8, 3),
+        nn.Flatten(),
+        nn.Linear(475776, n_actions),
+        nn.Softmax(),
+    )
     
     #CRITIC Q/V
     action_value = nn.Sequential(
@@ -67,9 +79,10 @@ if __name__ == "__main__":
 
     #AGENT
     agent = DQN(memory = memory, action_value=action_value, metrics = metrics)
-    
+    agent = REINFORCE(memory=memory, actor=actor, metrics=metrics)
+
     #RUN
-    render_agent(agent, env, show_metrics=True, episodes=2)
+    render_agent(agent, env, show_metrics=True, episodes=1)
     run(agent, env, episodes=1000, wandb_cb = True, plt_cb=False, video_cb = True)    
 
 

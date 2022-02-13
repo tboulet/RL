@@ -7,6 +7,8 @@ wandb
 rbdl
 config
 models
+DQN_TP
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

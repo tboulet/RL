@@ -21,10 +21,12 @@ import wandb
 from wandb.integration.sb3 import WandbCallback
 import wandb
 
-def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True, n_ep_save_video = 100):
+def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True, 
+        n_ep_save_video = 100, 
+        n_render = 20
+        ):
     
     print("Run starts.")
-    
     config = agent.config
 ################### FEEDBACK #####################
     if wandb_cb: 
@@ -55,6 +57,9 @@ def run(agent, env, episodes, wandb_cb = True, plt_cb = True, video_cb = True, n
             metrics2 = agent.learn()
             
             ###### Feedback ######
+            print(f"Episode n°{episode} - Total step n°{agent.step} ...", end = '\r')
+            if episode % n_render == 0:
+                env.render()
             for metric in metrics1 + metrics2:
                 if wandb_cb:
                     wandb.log(metric, step = agent.step)

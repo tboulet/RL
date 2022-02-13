@@ -7,7 +7,6 @@ class Memory():
     '''
 
     def __init__(self, MEMORY_KEYS: list, max_memory_len: int=None):
-
         self.max_memory_len = max_memory_len
         self.MEMORY_KEYS = MEMORY_KEYS
         self.trajectory = {}
@@ -31,6 +30,7 @@ class Memory():
         sample_size : the number of transitions to sample, default all.
         pos_start : the position in the memory of the first transition sampled, default 0.
         method : the method of sampling in "all", "last", "random", "all_shuffled", "batch_shuffled".
+        func : a function applied to each elements of the transitions, usually converting a np array into a pytorch/tf/jax tensor.
         return : a list containing a list of size sample_size for each kind of element stored.
         '''
         if method == 'all':

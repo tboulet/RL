@@ -1,3 +1,6 @@
+from time import time
+
+
 class Metric():
     def __init__(self):
         pass
@@ -7,6 +10,16 @@ class Metric():
     
     def on_remember(self, **kwargs):
         return dict()
+
+
+class MetricS_On_Learn(Metric):
+    metric_names = ["value", "actor_loss", "critic_loss", ]
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent  
+    
+    def on_learn(self, **kwargs):
+        return {metric_name : kwargs[metric_name] for metric_name in self.metric_names if metric_name in kwargs}
 
 
 class Metric_Total_Reward(Metric):
@@ -46,55 +59,16 @@ class Metric_Epsilon(Metric):
             return dict()
 
 
-
-class Metric_Actor_Loss(Metric):
-    def __init__(self, agent):
-        super().__init__()
-        self.agent = agent
-    
-    def on_learn(self, **kwargs):
-        try:
-            return {"actor_loss" : kwargs["actor_loss"]}
-        except KeyError:
-            return dict()
-
-
-class Metric_Critic_Loss(Metric):
-    def __init__(self, agent):
-        super().__init__()
-        self.agent = agent
-        
-    def on_learn(self, **kwargs):
-        try:
-            return {"critic_loss" : kwargs["critic_loss"]}
-        except KeyError:
-            return dict()
-
-
-class Metric_Critic_Value(Metric):
-    def __init__(self, agent):
-        super().__init__()
-        self.agent = agent
-        
-    def on_learn(self, **kwargs):
-        try:
-            return {"value" : kwargs["value"]}
-        except KeyError:
-            return dict()
-
-
 class Metric_Critic_Value_Unnormalized(Metric):
     def __init__(self, agent):
         super().__init__()
         self.agent = agent
-        self.is_normalized = agent.reward_scaler is not None
-        if self.is_normalized:
-            self.mean, self.std = agent.reward_scaler
+        self.is_normalized = not( hasattr(agent, "reward_scaler") or agent.reward_scaler is None )
         
     def on_learn(self, **kwargs):
         try:
             if self.is_normalized:
-                return {"value_unnormalized" : self.mean + self.std * kwargs["value"]}
+                return {"value_unnormalized" : self.agent.reward_scaler * kwargs["value"]}
             else:
                 return {"value_unnormalized" : kwargs["value"]}
         except KeyError:
@@ -116,3 +90,13 @@ class Metric_Count_Episodes(Metric):
                 return dict()
         except KeyError:
             return dict()
+        
+        
+class Metric_Time_Count(Metric):
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent
+        self.t0 = time()
+    
+    def on_learn(self, **kwargs):
+        return {"time" : round((time() - self.t0) / 60, 2)}
