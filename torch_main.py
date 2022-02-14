@@ -41,7 +41,8 @@ if __name__ == "__main__":
         MetricS_On_Learn,
         Metric_Total_Reward, 
         Metric_Epsilon, 
-        Metric_Time_Count]
+        Metric_Time_Count,
+        ]
     
     #ACTOR PI
     actor = nn.Sequential(
@@ -64,6 +65,13 @@ if __name__ == "__main__":
         nn.ReLU(),
         nn.Linear(18, out_features=1),
     )
+    
+    #ADVANTAGE VALUE A
+    advantage_value = nn.Sequential(
+        nn.Linear(in_features=env.observation_space.shape[0], out_features=18),
+        nn.ReLU(),
+        nn.Linear(18, out_features=env.action_space.n + 1),
+    )
 
     #AGENT
     # agent = DQN(memory = memory, action_value=action_value, metrics = metrics)
@@ -72,12 +80,13 @@ if __name__ == "__main__":
                          actor = actor, 
                          action_value=action_value, 
                          state_value=state_value,
+                         advantage_value = advantage_value,
                          metrics = metrics, 
                          config = ACTOR_CRITIC_CONFIG)
     
     
     #RUN
-    run(agent, env, episodes=10000, wandb_cb = False, plt_cb=False, video_cb = False)
+    run(agent, env, episodes=10000, wandb_cb = True, plt_cb=False, video_cb = False)
     render_agent(agent, env)
 
 

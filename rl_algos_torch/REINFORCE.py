@@ -18,6 +18,13 @@ from MEMORY import Memory
 from CONFIGS import REINFORCE_CONFIG
 
 class REINFORCE():
+    '''REINFORCE agent is an actor RL agent that performs gradient ascends on the estimated objective function to maximize.
+    NN trained : Actor
+    Policy used : On-policy
+    Stochastic : Yes
+    Actions : discrete (continuous not implemented)
+    States : discrete / continuous
+    '''
 
     def __init__(self, memory, actor : nn.Module, metrics = [], config = REINFORCE_CONFIG):
         self.config = config

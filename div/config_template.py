@@ -1,2 +1,2 @@
-project="wandb_project_name"
-entity="wandb_account_name"
+project="your_wandb_project_name"
+entity="your_wandb_account_name"

@@ -25,9 +25,12 @@ class ACTOR_CRITIC(AGENT):
                 actor : nn.Module, 
                 action_value : nn.Module = None, 
                 state_value : nn.Module = None, 
+                advantage_value : nn.Module = None, 
                 metrics = [], 
                 config = ACTOR_CRITIC_CONFIG):
-        '''A general Actor Critic algorithm, using a policy network that learns to act and a critic network that learns the model.
+        '''A general Actor Critic algorithm, using a policy network that learns to act and a critic network that learns the model. 
+        The parameter compute_gain_method defines the method for defining the weight of the policy gradients which can be (or not be) offline, centered, causal and using a critic.
+        
         memory : a Memory object
         actor : a nn.Module neural network, pi_theta : s --> [p(a|s) for a]
         action_value : a nn.Module neural network, Q_omega : s --> [Q(s,a) for a]
@@ -43,32 +46,40 @@ class ACTOR_CRITIC(AGENT):
                 
         self.setup_critic(action_value, state_value)
         self.policy = actor
-        self.opt_policy = optim.Adam(lr = self.learning_rate, params=self.policy.parameters())
+        self.opt_policy = optim.Adam(lr = self.learning_rate_actor, params=self.policy.parameters())
         
         self.metrics = list(Metric(self) for Metric in metrics)
         
     
-    def setup_critic(self, Q, V):
+    def setup_critic(self, Q, V, A):
         '''Method for preparing the ACTOR_CRITIC object to use and train its critic depending of the method used
         for computing gain.
         '''
-        if self.compute_gain_method in ("total_reward", "total_future_reward", "total_reward_minus_MC"):
-            self.use_Q, self.use_V = False, False
-            if self.compute_gain_method == "total_reward_minus_MC":
+        if self.compute_gain_method in ("total_reward", "total_future_reward", "total_reward_minus_leaky_mean", "total_reward_minus_MC_mean"):
+            self.use_Q, self.use_V, self.use_A = False, False, False
+            if self.compute_gain_method == "total_reward_minus_leaky_mean":
                 self.alpha_0 = self.config["alpha_0"] if "alpha_0" in self.config else 1e-2
                 self.V_0 = 0
         elif self.compute_gain_method in ("state_value", "state_value_centered", "total_future_reward_minus_state_value"):
             if V is None:
                 raise Exception(f"Using method {self.compute_gain_method} requires to use state value V.")
-            self.use_Q, self.use_V = False, True
+            self.use_Q, self.use_V, self.use_A = False, True, False
             self.state_value = V
-            self.opt_state_value = optim.Adam(lr = 1e-4, params = self.state_value.parameters())
-        elif self.compute_gain_method in ("action_value_centered", "total_future_reward_minus_action_value"):
+            self.opt_critic = optim.Adam(lr = self.learning_rate_critic, params = self.state_value.parameters())
+        elif self.compute_gain_method in ("action_value", "action_value_centered", "total_future_reward_minus_action_value"):
             if Q is None:
                 raise Exception(f"Using method {self.compute_gain_method} requires to use action value Q.")
-            self.use_Q, self.use_V = True, False
+            self.use_Q, self.use_V, self.use_A = True, False, False
             self.action_value = Q
-            self.opt_action_value = optim.Adam(lr = 1e-4, params=self.action_value.parameters())
+            self.opt_critic = optim.Adam(lr = self.learning_rate_critic, params=self.action_value.parameters())
+        elif self.compute_gain_method == "advantage_value":
+            if A is None:
+                raise Exception(f"Using method {self.compute_gain_method} requires to use advantage value A.")
+            self.use_Q, self.use_V, self.use_A = False, False, True
+            self.advantage_value = A
+            self.opt_critic = optim.Adam(lr = self.learning_rate_critic, params=self.action_value.parameters())
+            print("NOT IMPLEMENTED")
+            raise
         else:
             raise NotImplementedError(f"Method {self.compute_gain_method} is not implemented.")
         
@@ -131,7 +142,8 @@ class ACTOR_CRITIC(AGENT):
         if self.step % self.update_ratio == 0:
             #Loss = - sum_t(G_t * ln(pi(a_t|s_t)))
             #G_t can be estimated by various methods
-            G = self.compute_gain(observations, actions, rewards, dones, next_observations)
+            with torch.no_grad():
+                G = self.compute_gain(observations, actions, rewards, dones, next_observations)
             for _ in range(self.gradient_steps_policy):
                 self.opt_policy.zero_grad()     
                 probs = self.policy(observations)   #(T, n_actions)
@@ -147,14 +159,15 @@ class ACTOR_CRITIC(AGENT):
             values["actor_loss"] = loss_pi.detach().numpy().mean()
         
         #Updating the action value
-        if self.use_Q and self.step % self.gradient_steps_action_value == 0:
+        if self.use_Q and self.step % self.gradient_steps_critic == 0:
             #Bootsrapping : Q(s,a) = r + gamma * max_a'(Q(s_next, a')) * (1-d)
             criterion = nn.MSELoss()
-            Q_s_a_next = self.action_value(next_observations)
-            Q_s_next, bests_a = torch.max(Q_s_a_next, dim = 1, keepdim=True)
-            Q_s_estimated = rewards + (1-dones) * self.gamma * Q_s_next
-            for _ in range(self.gradient_steps_action_value):
-                self.opt_action_value.zero_grad()
+            with torch.no_grad():
+                Q_s_a_next = self.action_value(next_observations)
+                Q_s_next, bests_a = torch.max(Q_s_a_next, dim = 1, keepdim=True)
+                Q_s_estimated = rewards + (1-dones) * self.gamma * Q_s_next
+            for _ in range(self.gradient_steps_critic):
+                self.opt_critic.zero_grad()
                 Q_s_a = self.action_value(observations)
                 Q_s = Q_s_a.gather(dim = 1, index = actions)
                 loss_Q = criterion(Q_s_estimated, Q_s)
@@ -162,29 +175,35 @@ class ACTOR_CRITIC(AGENT):
                 if self.clipping is not None:
                     for param in self.action_value.parameters():
                         param.grad.data.clamp_(-self.clipping, self.clipping)
-                self.opt_action_value.step()
+                self.opt_critic.step()
             values["critic_loss"] = loss_Q.detach().numpy()
-            values["values"] = Q_s.detach().numpy().mean()
+            values["value"] = Q_s.detach().numpy().mean()
             
         #Updating the state value
-        if self.use_V and self.step % self.gradient_steps_state_value == 0:
+        if self.use_V and self.step % self.gradient_steps_critic == 0:
             #Bootstrapping : V(s) = r + gamma * V(s_next) * (1-d)
             criterion = nn.MSELoss()
-            V_s_estimated = rewards + (1-dones) * self.gamma * self.state_value(next_observations)
-            for _ in range(self.gradient_steps_state_value):
-                self.opt_state_value.zero_grad()
+            with torch.no_grad():
+                V_s_estimated = rewards + (1-dones) * self.gamma * self.state_value(next_observations)
+            for _ in range(self.gradient_steps_critic):
+                self.opt_critic.zero_grad()
                 V_s = self.state_value(observations)
                 loss_V = criterion(V_s, V_s_estimated)
                 loss_V.backward()
                 if self.clipping is not None:
                     for param in self.state_value.parameters():
                         param.grad.data.clamp_(-self.clipping, self.clipping)
-                self.opt_state_value.step()
+                self.opt_critic.step()
             values["critic_loss"] = loss_V.detach().numpy()
-            values["values"] = V_s.detach().numpy().mean()
+            values["value"] = V_s.detach().numpy().mean()
         
+        #Updating the advantage value
+        if self.use_A and self.step % self.gradient_steps_critic == 0:
+            #to implement if possible
+            raise
+            
         #Updating V_0
-        if self.compute_gain_method == "total_reward_minus_MC":
+        if self.compute_gain_method == "total_reward_minus_leaky_mean":
             ep_lenght = rewards.shape[0]
             weigths_gamma = torch.Tensor([self.gamma ** t for t in range(ep_lenght)])
             rewards_weighted = torch.multiply(rewards, weigths_gamma)
@@ -209,7 +228,7 @@ class ACTOR_CRITIC(AGENT):
 
     def compute_gain(self, observations, actions, rewards, dones, next_observations):
         '''Compute the "gain" or the "advantage function" that will be applied as weights to the gradients of ln(pi).
-        *args : the elements of a transition
+        *args : the elements of a trajectory during one episode
         return : a tensor of shape the lenght of the previous episode, containing the gain/advantage at each step t.
         '''
         ep_lenght = rewards.shape[0]
@@ -223,7 +242,10 @@ class ACTOR_CRITIC(AGENT):
             G = total_reward.repeat(repeats = (ep_lenght,))
         elif self.compute_gain_method == "total_future_reward":
             G = self.compute_future_total_rewards(rewards)
-        elif self.compute_gain_method == "total_reward_minus_MC":
+        elif self.compute_gain_method == "total_reward_minus_MC_mean":
+            total_reward_MC_mean = None #to implement
+            G = self.compute_future_total_rewards(rewards) - total_reward_MC_mean
+        elif self.compute_gain_method == "total_reward_minus_leaky_mean":
             G = self.compute_future_total_rewards(rewards) - self.V_0
         elif self.compute_gain_method == "total_future_reward_minus_state_value":
             G = self.compute_future_total_rewards(rewards) - self.state_value(observations)[:, 0]
@@ -233,6 +255,9 @@ class ACTOR_CRITIC(AGENT):
             V_s = self.state_value(observations)
             G = rewards + (1-dones) * self.gamma * self.state_value(next_observations) - V_s
             G = G[:, 0]
+        elif self.compute_gain_method == "action_value":
+            Q_s_a = self.action_value(observations)
+            G = torch.gather(Q_s_a, dim = 1, index=actions)[:, 0]
         elif self.compute_gain_method == "action_value_centered":
             Q_s_a = self.action_value(observations)
             Q_s = torch.gather(Q_s_a, dim = 1, index=actions)[:, 0]

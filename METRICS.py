@@ -75,6 +75,35 @@ class Metric_Critic_Value_Unnormalized(Metric):
             return dict()
         
 
+class Metric_Action_Frequencies(Metric):
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent
+        self.frequencies = dict()
+        self.new_episode = False
+
+    def on_remember(self, **kwargs):
+        try:
+            if self.new_episode: 
+                self.frequencies = dict()
+                self.ep_lenght = 0
+                self.new_episode = False
+            action = kwargs["action"]
+            if action not in self.frequencies:
+                self.frequencies[action] = 0
+            self.frequencies[action] += 1
+
+            if kwargs["done"]:
+                self.new_episode = True
+                ep_lenght = sum(self.frequencies.values())
+                return {f"action_{a}_freq" : n_actions / ep_lenght for a, n_actions in self.frequencies.items()}
+            else:
+                return dict()
+        except KeyError:
+            return dict()
+        
+
+
 class Metric_Count_Episodes(Metric):
     def __init__(self, agent):
         super().__init__()
