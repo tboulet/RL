@@ -1,3 +1,4 @@
+from numbers import Number
 from time import time
 
 
@@ -10,10 +11,14 @@ class Metric():
     
     def on_remember(self, **kwargs):
         return dict()
-
+    
+    def on_act(self, **kwargs):
+        return dict()
+    
 
 class MetricS_On_Learn(Metric):
-    metric_names = ["value", "actor_loss", "critic_loss", ]
+    '''Log every metrics whose name match classical RL important values such as Q_value, actor_loss ...'''
+    metric_names = ["value", "Q_value", "V_value", "actor_loss", "critic_loss", "actor_reward"]
     def __init__(self, agent):
         super().__init__()
         self.agent = agent  
@@ -22,8 +27,18 @@ class MetricS_On_Learn(Metric):
         return {metric_name : kwargs[metric_name] for metric_name in self.metric_names if metric_name in kwargs}
 
 
-class Metric_Total_Reward(Metric):
+class MetricS_On_Learn_Numerical(Metric):
+    '''Log every numerical metrics.'''
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent  
     
+    def on_learn(self, **kwargs):
+        return {metric_name : kwargs[metric_name] for metric_name, value in kwargs.items() if isinstance(value, Number)}
+
+
+class Metric_Total_Reward(Metric):
+    '''Log total reward (sum of reward over an episode) at every episode.'''
     def __init__(self, agent):
         super().__init__()
         self.agent = agent    
@@ -44,10 +59,22 @@ class Metric_Total_Reward(Metric):
                 return dict()
         except KeyError:
             return dict()
+
+
+class Metric_Reward(Metric):
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent
     
+    def on_remember(self, **kwargs):
+        try:
+            return {"reward" : kwargs["reward"]}
+        except:
+            return dict()
+        
 
 class Metric_Epsilon(Metric):
-
+    '''Log exploration factor.'''
     def __init__(self, agent):
         super().__init__()
         self.agent = agent
@@ -60,6 +87,7 @@ class Metric_Epsilon(Metric):
 
 
 class Metric_Critic_Value_Unnormalized(Metric):
+    '''Log value not scaled.'''
     def __init__(self, agent):
         super().__init__()
         self.agent = agent
@@ -73,9 +101,10 @@ class Metric_Critic_Value_Unnormalized(Metric):
                 return {"value_unnormalized" : kwargs["value"]}
         except KeyError:
             return dict()
-        
+
 
 class Metric_Action_Frequencies(Metric):
+    '''Log action frequency in one episode for each action possible.'''
     def __init__(self, agent):
         super().__init__()
         self.agent = agent
@@ -103,7 +132,6 @@ class Metric_Action_Frequencies(Metric):
             return dict()
         
 
-
 class Metric_Count_Episodes(Metric):
     def __init__(self, agent):
         super().__init__()
@@ -129,3 +157,24 @@ class Metric_Time_Count(Metric):
     
     def on_learn(self, **kwargs):
         return {"time" : round((time() - self.t0) / 60, 2)}
+    
+        
+class Metric_Performances(Metric):
+    def __init__(self, agent):
+        super().__init__()
+        self.agent = agent
+        self.t0 = time()
+    def on_x(self, step_of_training : str):
+        dur = time() - self.t0
+        self.t0 = time()
+        if self.agent.step < 10:
+            return dict()
+        return {step_of_training: dur}
+    def on_act(self, **kwargs):
+        return self.on_x("time : ACTING + LOGGING (+ RENDERING)")
+    def on_remember(self, **kwargs):
+        return self.on_x("time : ENV REACTING + REMEMBERING")
+    def on_learn(self, **kwargs):
+        return self.on_x("time : SAMPLING + LEARNING")
+    
+    

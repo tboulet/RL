@@ -13,7 +13,7 @@ def render_agent(agent, env = gym.make("CartPole-v0"), episodes = 10, show_metri
 
         while not done:
             action = agent.act(obs)
-            next_obs, reward, done, info = env.step(action)
+            next_obs, reward, done, info = env.step(1)
             env.render()
             metrics1 = agent.remember(obs, action, reward, done, next_obs, info)
             metrics2 = agent.learn()

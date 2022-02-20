@@ -17,17 +17,17 @@ from torch.distributions.categorical import Categorical
 
 from MEMORY import Memory
 from CONFIGS import ACTOR_CRITIC_CONFIG
-from AGENT import AGENT
+from METRICS import *
+from rl_algos.AGENT import AGENT
 
 class ACTOR_CRITIC(AGENT):
 
-    def __init__(self, memory, 
+    def __init__(self, 
                 actor : nn.Module, 
                 action_value : nn.Module = None, 
                 state_value : nn.Module = None, 
                 advantage_value : nn.Module = None, 
-                metrics = [], 
-                config = ACTOR_CRITIC_CONFIG):
+                ):
         '''A general Actor Critic algorithm, using a policy network that learns to act and a critic network that learns the model. 
         The parameter compute_gain_method defines the method for defining the weight of the policy gradients which can be (or not be) offline, centered, causal and using a critic.
         
@@ -38,17 +38,15 @@ class ACTOR_CRITIC(AGENT):
         metrics : a list of Metrics objects
         **config : a config dictionnary for Actor_Critic
         '''
-        super().__init__(config)
-        self.config = config
-        self.memory = memory
+        metrics = [MetricS_On_Learn, Metric_Reward, Metric_Total_Reward, Metric_Performances]
+        super().__init__(config = ACTOR_CRITIC_CONFIG, metrics = metrics)
+        self.memory = Memory(MEMORY_KEYS = ['observation', 'action','reward', 'done', 'next_observation'])
         self.step = 0
-        self.last_action = None
                 
-        self.setup_critic(action_value, state_value)
+        self.setup_critic(action_value, state_value, advantage_value)
         self.policy = actor
         self.opt_policy = optim.Adam(lr = self.learning_rate_actor, params=self.policy.parameters())
         
-        self.metrics = list(Metric(self) for Metric in metrics)
         
     
     def setup_critic(self, Q, V, A):
@@ -94,12 +92,7 @@ class ACTOR_CRITIC(AGENT):
         mask : a binary list containing 1 where corresponding actions are forbidden.
         return : an int corresponding to an action
         '''
-
-        #Skip frames:
-        if self.step % self.frames_skipped != 0:
-            if self.last_action is not None:
-                return self.last_action
-            
+        
         #Batching observation
         observations = torch.Tensor(observation)
         observations = observations.unsqueeze(0) # (1, observation_space)
@@ -118,32 +111,29 @@ class ACTOR_CRITIC(AGENT):
         return : metrics, a list of metrics computed during this learning step.
         '''
         self.step += 1
-        metrics = list()
         values = dict()
-        
-        #Skip frames:
-        if self.step % self.frames_skipped != 0:
-            return metrics
         
         #Sample trajectories
         observations, actions, rewards, dones, next_observations = self.memory.sample(
             method = "all",
             func = lambda arr : torch.Tensor(arr),
-        )
+            )
         actions = actions.to(dtype = torch.int64)
-        if self.reward_scaler is not None:          #Scaling the rewards
+        
+        #Scaling the rewards
+        if self.reward_scaler is not None:          
             rewards /= self.reward_scaler
 
         #Learn only at end of episode
         if not dones[-1]:
-            return metrics
+            return
         
         #Updating the policy 
-        if self.step % self.update_ratio == 0:
+        if self.step % self.batch_size == 0:
             #Loss = - sum_t(G_t * ln(pi(a_t|s_t)))
             #G_t can be estimated by various methods
             with torch.no_grad():
-                G = self.compute_gain(observations, actions, rewards, dones, next_observations)
+                G = self.compute_gain(observations, actions, rewards, dones, next_observations, method = self.compute_gain_method)
             for _ in range(self.gradient_steps_policy):
                 self.opt_policy.zero_grad()     
                 probs = self.policy(observations)   #(T, n_actions)
@@ -152,14 +142,14 @@ class ACTOR_CRITIC(AGENT):
                 loss_pi = torch.multiply(log_probs, G)
                 loss_pi = - torch.sum(loss_pi)
                 #Backpropagate to improve policy
-                loss_pi.backward()
+                loss_pi.backward(retain_graph = True)
                 self.opt_policy.step()
             #Empty memory of previous episode
             self.memory.__empty__()
             values["actor_loss"] = loss_pi.detach().numpy().mean()
         
         #Updating the action value
-        if self.use_Q and self.step % self.gradient_steps_critic == 0:
+        if self.use_Q:
             #Bootsrapping : Q(s,a) = r + gamma * max_a'(Q(s_next, a')) * (1-d)
             criterion = nn.MSELoss()
             with torch.no_grad():
@@ -180,11 +170,12 @@ class ACTOR_CRITIC(AGENT):
             values["value"] = Q_s.detach().numpy().mean()
             
         #Updating the state value
-        if self.use_V and self.step % self.gradient_steps_critic == 0:
-            #Bootstrapping : V(s) = r + gamma * V(s_next) * (1-d)
+        if self.use_V:
+            #Bootstrapping : V(s) = r + gamma * V(s_next) * (1-d) or MC estimation
             criterion = nn.MSELoss()
             with torch.no_grad():
-                V_s_estimated = rewards + (1-dones) * self.gamma * self.state_value(next_observations)
+                # V_s_estimated = rewards + (1-dones) * self.gamma * self.state_value(next_observations)
+                V_s_estimated = self.compute_gain(observations, actions, rewards, dones, next_observations, method = "total_future_reward")
             for _ in range(self.gradient_steps_critic):
                 self.opt_critic.zero_grad()
                 V_s = self.state_value(observations)
@@ -226,46 +217,44 @@ class ACTOR_CRITIC(AGENT):
         self.memory.remember((observation, action, reward, done, next_observation, info))
         return list(metric.on_remember(obs = observation, action = action, reward = reward, done = done, next_obs = next_observation) for metric in self.metrics)
 
-    def compute_gain(self, observations, actions, rewards, dones, next_observations):
+    def compute_gain(self, observations, actions, rewards, dones, next_observations, method):
         '''Compute the "gain" or the "advantage function" that will be applied as weights to the gradients of ln(pi).
         *args : the elements of a trajectory during one episode
+        method : the method used for computing the gain
         return : a tensor of shape the lenght of the previous episode, containing the gain/advantage at each step t.
         '''
-        ep_lenght = rewards.shape[0]
-        if self.reward_scaler is not None:
-            rewards /= self.reward_scaler
-        
-        if self.compute_gain_method == "total_reward":
+        ep_lenght = rewards.shape[0]        
+        if method == "total_reward":
             weigths_gamma = torch.Tensor([self.gamma ** t for t in range(ep_lenght)])
             rewards_weighted = torch.multiply(rewards, weigths_gamma)
             total_reward = torch.sum(rewards_weighted)
             G = total_reward.repeat(repeats = (ep_lenght,))
-        elif self.compute_gain_method == "total_future_reward":
+        elif method == "total_future_reward":           
             G = self.compute_future_total_rewards(rewards)
-        elif self.compute_gain_method == "total_reward_minus_MC_mean":
+        elif method == "total_reward_minus_MC_mean":
             total_reward_MC_mean = None #to implement
             G = self.compute_future_total_rewards(rewards) - total_reward_MC_mean
-        elif self.compute_gain_method == "total_reward_minus_leaky_mean":
+        elif method == "total_reward_minus_leaky_mean":
             G = self.compute_future_total_rewards(rewards) - self.V_0
-        elif self.compute_gain_method == "total_future_reward_minus_state_value":
+        elif method == "total_future_reward_minus_state_value":
             G = self.compute_future_total_rewards(rewards) - self.state_value(observations)[:, 0]
-        elif self.compute_gain_method == "state_value":
+        elif method == "state_value":
             G = self.state_value(observations)[:,0]
-        elif self.compute_gain_method == "state_value_centered":
+        elif method == "state_value_centered":
             V_s = self.state_value(observations)
             G = rewards + (1-dones) * self.gamma * self.state_value(next_observations) - V_s
             G = G[:, 0]
-        elif self.compute_gain_method == "action_value":
+        elif method == "action_value":
             Q_s_a = self.action_value(observations)
             G = torch.gather(Q_s_a, dim = 1, index=actions)[:, 0]
-        elif self.compute_gain_method == "action_value_centered":
+        elif method == "action_value_centered":
             Q_s_a = self.action_value(observations)
             Q_s = torch.gather(Q_s_a, dim = 1, index=actions)[:, 0]
             PI_s_a = self.policy(observations)
             Q_s_a_weighted = Q_s_a * PI_s_a
             Q_s_mean = torch.sum(Q_s_a_weighted, dim = 1)
             G = Q_s - Q_s_mean
-        elif self.compute_gain_method == "total_future_reward_minus_action_value":
+        elif method == "total_future_reward_minus_action_value":
             total_future_rewards = self.compute_future_total_rewards(rewards)
             Q_s_a = self.action_value(observations)
             PI_s_a = self.policy(observations)
@@ -277,7 +266,7 @@ class ACTOR_CRITIC(AGENT):
          
         test = False
         if test:
-            print("\n\nSucces !!!", G.shape)
+            print("\n\Success", G.shape)
             print(G)
             raise
         return G
@@ -293,3 +282,5 @@ class ACTOR_CRITIC(AGENT):
         rewards_weighted = torch.multiply(rewards, weigths_gamma)
         future_total_rewards = list(torch.sum(rewards_weighted[t:]) for t in range(ep_lenght))
         return torch.Tensor(future_total_rewards)
+
+
