@@ -1,3 +1,4 @@
+from operator import index
 from typing import Tuple
 import torch
 import numpy as np
@@ -95,7 +96,7 @@ class Memory():
             for val, key in zip(transition, self.MEMORY_KEYS):
                 self.trajectory[key].pop()
 
-    def sample(self, sample_size=None, pos_start=None, method='last'):
+    def sample(self, sample_size=None, pos_start=None, method='last', as_tensor = True):
         '''Samples several transitions from memory, using different methods. Complexity = O(sample_size x transition_size)
         sample_size : the number of transitions to sample, default all.
         pos_start : the position in the memory of the first transition sampled, default 0.
@@ -132,15 +133,28 @@ class Memory():
             #Element n° pos_start and sample_size next elements, shuffled.
             indexes = [pos_start + n for n in range(sample_size)]
             rd.shuffle(indexes)
+        
+        elif method == 'episodic_batches':
+            #Return a list L of list E of element-tensor, each list E being a batch
+            indexes_dones = [0] + [idx for idx, d in enumerate(self.trajectory['done']) if d == 1]
+            res_batches = list()
+            for i in range(len(indexes_dones) - 1):
+                idx, idx_next = indexes_dones[i:i+2]
+                res_batches.append(
+                    self.sample(pos_start = idx, sample_size = idx_next - idx, method = 'batch')
+                )
+            return res_batches
 
         else:
             raise NotImplementedError('Not implemented sample')
 
         trajectory = list()
         for elements in self.trajectory.values():
-            sampled_elements = torch.tensor(np.array([elements[idx] for idx in indexes]))
-            if len(sampled_elements.shape) == 1:
-                sampled_elements = torch.unsqueeze(sampled_elements, -1)
+            sampled_elements = [elements[idx] for idx in indexes]
+            if as_tensor:
+                sampled_elements = torch.tensor(np.array(sampled_elements))
+                if len(sampled_elements.shape) == 1:
+                    sampled_elements = torch.unsqueeze(sampled_elements, -1)
             trajectory.append(sampled_elements)
 
         return trajectory

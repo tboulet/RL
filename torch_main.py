@@ -16,7 +16,7 @@ import gym
 import wandb
 #RL agents
 from div.utils import *
-from rl_algos._ALL_AGENTS import REINFORCE, DQN, ACTOR_CRITIC, PPO
+from rl_algos._ALL_AGENTS import REINFORCE, REINFORCE_ONLINE, DQN, ACTOR_CRITIC, PPO
 from rl_algos.AGENT import RANDOM_AGENT
 
 
@@ -33,6 +33,7 @@ def run(agent, env, steps, wandb_cb = True,
     
     print("Run starts.")
 ################### FEEDBACK #####################
+    if n_render == None: n_render = float('inf')
     if wandb_cb: 
         try:
             from config import project, entity
@@ -110,15 +111,18 @@ if __name__ == "__main__":
     #AGENT
     dqn = DQN(action_value=action_value)
     reinforce = REINFORCE(actor=actor)
-    ppo = PPO(actor = actor, state_value= state_value)
+    reinforce_o = REINFORCE_ONLINE(actor = actor)
+    ppo = PPO(actor = actor, state_value = state_value)
+    ac = ACTOR_CRITIC(actor = actor, state_value = state_value)
     random_agent = RANDOM_AGENT(2)
     
-    agent = ppo
+    agent = reinforce_o
     
     #RUN
     run(agent, 
         env = env, 
-        steps=500000, 
+        steps=10000000, 
         wandb_cb = True,
-        n_render=20,
-        )    
+        n_render = 20,
+        )
+    

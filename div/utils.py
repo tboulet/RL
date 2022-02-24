@@ -11,3 +11,14 @@ def load_smb_env(obs_complexity = 1, action_complexity = 1, is_random = False):
     env = gym_super_mario_bros.make(game_id)
     env = JoypadSpace(env, [RIGHT_ONLY, SIMPLE_MOVEMENT, COMPLEX_MOVEMENT][action_complexity])
     return env
+
+def praise(*args):
+    print()
+    for arg in args:
+        print(arg)
+    raise
+
+def praise_not(*args):
+    print()
+    for arg in args:
+        print(arg)

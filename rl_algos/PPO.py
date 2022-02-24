@@ -13,6 +13,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from torch.distributions.categorical import Categorical
 
+from div.utils import *
 from MEMORY import Memory
 from CONFIGS import PPO_CONFIG
 from METRICS import *
@@ -28,7 +29,7 @@ class PPO(AGENT):
     '''
 
     def __init__(self, actor : nn.Module, state_value : nn.Module):
-        metrics = [MetricS_On_Learn, Metric_Reward, Metric_Total_Reward, Metric_Performances]
+        metrics = [MetricS_On_Learn, Metric_Total_Reward, Metric_Time_Count]
         super().__init__(config = PPO_CONFIG, metrics = metrics)
         self.memory = Memory(MEMORY_KEYS = ['observation', 'action','reward', 'done', 'next_observation'])
         self.last_action = None
@@ -59,7 +60,6 @@ class PPO(AGENT):
         self.add_metric(mode = 'act')
         
         # Action
-        self.last_action = action
         return action
 
 
@@ -68,7 +68,6 @@ class PPO(AGENT):
         '''
         values = dict()
         self.step += 1
-        criterion = nn.MSELoss()
         
         #We learn once we got enought transitions
         if self.step % self.timesteps != 0:
@@ -93,11 +92,20 @@ class PPO(AGENT):
         
         #Compute probability of old policy
         pi_theta_old_s_a = self.policy(observations)  
-        pi_theta_old_s   = torch.gather(pi_theta_old_s_a, dim = 1, index = actions)
+        pi_theta_old_s   = torch.gather(pi_theta_old_s_a, dim = 1, index = actions).detach()
         
         n_batch = self.timesteps // self.batch_size
+            
+            
+
+            
+            
+            
+            
+            
         for _ in range(self.epochs):
             for i in range(n_batch):
+                # break
                 #Batching data
                 observations_batch = observations[i * self.batch_size : (i+1) * self.batch_size]
                 actions_batch = actions[i * self.batch_size : (i+1) * self.batch_size]
@@ -107,9 +115,10 @@ class PPO(AGENT):
                 pi_theta_old_s_batch = pi_theta_old_s[i * self.batch_size : (i+1) * self.batch_size]
                 
                 #Advantage function A, using a V value and will be usefull for later
-                with torch.no_grad():
-                    V_s_target = rewards_batch + (1 - dones_batch) * self.gamma * self.state_value_target(next_observations_batch)
-                    A_s = V_s_target - self.state_value(observations_batch)
+                V_s_target = rewards_batch + (1 - dones_batch) * self.gamma * self.state_value_target(next_observations_batch)
+                V_s = self.state_value(observations_batch)
+                A_s = V_s_target - V_s
+                A_s = A_s.detach()
                     
                 #Objective function : J_clip = min(r*A, clip(r,1-e,1+e)A)  where r = pi_theta_new/pi_theta_old and A advantage function
                 pi_theta_new_s_a = policy_new(observations_batch)
@@ -119,16 +128,19 @@ class PPO(AGENT):
                 J_clip = torch.minimum(ratio_s * A_s, ratio_s_clipped * A_s).mean()
 
                 #Error on critic : L = L(V(s), V_target)   with V_target = r + gamma * (1-d) * V_target(s_next)
-                V_s = self.state_value(next_observations_batch)
-                critic_loss = criterion(V_s, V_s_target).mean()
+                critic_loss = F.smooth_l1_loss(self.state_value(observations_batch), V_s_target.detach()).mean()
                 
                 #Entropy : H = sum_a(- log(p) * p)      where p = pi_theta(a|s)
                 log_pi_theta_s_a = torch.log(pi_theta_new_s_a)
                 pmlogp_s_a = - log_pi_theta_s_a * pi_theta_new_s_a
-                H = torch.mean(pmlogp_s_a, dim = 1).mean()
-
+                H_s = torch.sum(pmlogp_s_a, dim = 1)
+                H = H_s.mean()
+                
+                # print(pi_theta_new_s_a.shape, pmlogp_s_a.shape, H_s.shape)
+                # raise
+            
                 #Total objective function
-                J = J_clip - self.c_critic * critic_loss + self.c_entropy * H
+                J = 1000*J_clip - self.c_critic * critic_loss + self.c_entropy * H
                 loss = - J
                 
                 #Gradient descend
@@ -137,26 +149,29 @@ class PPO(AGENT):
                 loss.backward(retain_graph = True)
                 opt_policy.step()
                 self.opt_critic.step()
+                
         
         #Update policy
-        self.policy = deepcopy(policy_new)
-        self.memory.__empty__()
-        
-        #Update target network
-        if self.update_method == "periodic":
-            if self.step % self.target_update_interval == 0:
-                self.state_value_target = deepcopy(self.state_value)
-        elif self.update_method == "soft":
-            for phi, phi_target in zip(self.state_value.parameters(), self.state_value_target.parameters()):
-                phi_target.data = self.tau * phi_target.data + (1-self.tau) * phi.data    
-        else:
-            print(f"Error : update_method {self.update_method} not implemented.")
-            sys.exit()
+        with torch.no_grad():
+            self.policy = deepcopy(policy_new)
+            self.memory.__empty__()
+            
+            #Update target network
+            if self.update_method == "periodic":
+                if self.step % self.target_update_interval == 0:
+                    self.state_value_target = deepcopy(self.state_value)
+            elif self.update_method == "soft":
+                for phi, phi_target in zip(self.state_value.parameters(), self.state_value_target.parameters()):
+                    phi_target.data = self.tau * phi_target.data + (1-self.tau) * phi.data    
+            else:
+                print(f"Error : update_method {self.update_method} not implemented.")
+                sys.exit()
 
         #Save metrics
         values["critic_loss"] = critic_loss.detach().numpy()
-        values["actor_reward"] = J_clip.detach().numpy()
+        values["J_clip"] = J_clip.detach().numpy()
         values["value"] = V_s.mean().detach().numpy()
+        values["entropy"] = H.mean().detach().numpy()
         self.add_metric(mode = 'learn', **values)
         
         
@@ -169,4 +184,3 @@ class PPO(AGENT):
         #Save metrics
         values = {"obs" : observation, "action" : action, "reward" : reward, "done" : done, "next_obs" : next_observation}
         self.add_metric(mode = 'remember', **values)
-    

@@ -40,6 +40,12 @@ class AGENT(ABC):
         for metric in self.metrics_saved:
             wandb.log(metric, step = self.step)
         self.metrics_saved = list()
+        
+    def batch_on_episodes(self, dones, *args):
+        '''Return a list of batch [(s,a,r,s',d) for n_episodes]
+        dones : a binary tensor of shape (total_timesteps)
+        '''
+        return [None for _ in args]
 
 
 

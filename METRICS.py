@@ -18,7 +18,7 @@ class Metric():
 
 class MetricS_On_Learn(Metric):
     '''Log every metrics whose name match classical RL important values such as Q_value, actor_loss ...'''
-    metric_names = ["value", "Q_value", "V_value", "actor_loss", "critic_loss", "actor_reward"]
+    metric_names = ["value", "Q_value", "V_value", "actor_loss", "critic_loss", "actor_reward", "entropy", "J_clip"]
     def __init__(self, agent):
         super().__init__()
         self.agent = agent  

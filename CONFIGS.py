@@ -21,22 +21,28 @@ DQN_CONFIG = {"name" : "DQN",
     }
 
 REINFORCE_CONFIG = {"name" : "REINFORCE",
-    "learning_rate" : 1e-3,
+    "learning_rate" : 1e-4,
+    "gradient_steps" : 4,   #<!> for >1, this became off policy
     "gamma" : 0.99,
     "reward_scaler" : None,
-    "batch_size" : 1, #TO IMPLEMENT
-    "off_policy" : False,
+    
+    "batch_size" : 1,
+    
+    "J_method" : "ratio_ln",   #ratio or ratio_ln     
+    "epsilon_clipper" : 0.2,
     }
 
 ACTOR_CRITIC_CONFIG = {"name" : "ACTOR_CRITIC",
-    "learning_rate_actor" : 1e-4,
-    "learning_rate_critic" : 1e-3,
-    "compute_gain_method" : "total_future_reward_minus_state_value",
-    "gamma" : 0.99,     
+    "learning_rate_actor" : 1e-2,
+    "learning_rate_critic" : 1e-2,
+    "compute_gain_method" : "GAE",
+    "gamma" : 0.98,     
+    "lmbda" : 0.98,
     "reward_scaler" : 100,
-    "batch_size" : 1,        #TO IMPLEMENT. #Algorithm updates critic at every steps, and policy every batchsize steps, using the entire batch
-    "gradient_steps_critic" : 1,
+    "batch_size" : 2,        #TO IMPLEMENT. #Algorithm updates critic at every steps, and policy every batchsize steps, using the entire batch
+    "gradient_steps_critic" : 4,
     "gradient_steps_policy" : 1,
+    "tau" : 0.99,
     "clipping" : None,
     }
 
@@ -53,18 +59,18 @@ DDPG_CONFIG = {"name" : "DDPG",
 PPO_CONFIG = {"name" : "PPO",
     "learning_rate" : 1e-3,
     "gamma" : 0.99,
-    "timesteps" : 512,
-    "batch_size" : 64,
-    "epochs" : 4,
+    "timesteps" : 256,
+    "batch_size" : 32,
+    "epochs" : 3,
     "tau" : 0.99,
+    "target_update_interval" : 10000,
     
     "update_method" : "soft",
     "reward_scaler" : None,
     
     "epsilon_clipper" : 0.2,
-    "c_critic" : 1.,
-    "c_entropy" : 1,
-    "entropy" : False,
+    "c_critic" : 1,
+    "c_entropy" : 0.01,
     }
 
 DUMMY_CONFIG = dict()
