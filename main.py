@@ -12,6 +12,7 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 #Gym for environments, WandB for feedback
+from ENV import env
 import gym
 import wandb
 #RL agents
@@ -82,7 +83,6 @@ def run(agent, env, steps, wandb_cb = True,
 
 if __name__ == "__main__":
     #ENV
-    env = gym.make("CartPole-v0")
     n_obs = env.observation_space.shape[0]
     n_actions = env.action_space.n
     
