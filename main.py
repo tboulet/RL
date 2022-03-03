@@ -12,11 +12,15 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 #Gym for environments, WandB for feedback
-from ENV import env
+from div.ENV import env
 import gym
 import wandb
 #RL agents
 from div.utils import *
+try:
+    from config import agent_name, steps, wandb_cb, n_render
+except ImportError:
+    raise Exception("You need to specify your config in config.py\nConfig template is available at div/config_template.py")
 from rl_algos._ALL_AGENTS import REINFORCE, REINFORCE_ONLINE, DQN, ACTOR_CRITIC, PPO
 from rl_algos.AGENT import RANDOM_AGENT
 
@@ -39,7 +43,7 @@ def run(agent, env, steps, wandb_cb = True,
         try:
             from config import project, entity
         except ImportError:
-            raise Exception("For ou need to specify your WandB ids in config.py\nConfig template is available at div/config_template.py")
+            raise Exception("You need to specify your WandB ids in config.py\nConfig template is available at div/config_template.py")
         run = wandb.init(project=project, 
                         entity=entity,
                         config=agent.config,
@@ -109,20 +113,20 @@ if __name__ == "__main__":
         )
 
     #AGENT
-    dqn = DQN(action_value=action_value)
-    reinforce = REINFORCE(actor=actor)
-    reinforce_o = REINFORCE_ONLINE(actor = actor)
-    ppo = PPO(actor = actor, state_value = state_value)
-    ac = ACTOR_CRITIC(actor = actor, state_value = state_value)
-    random_agent = RANDOM_AGENT(2)
-    
-    agent = reinforce_o
+    agents = {'dqn' : DQN(action_value=action_value),
+        'reinforce' : REINFORCE(actor=actor),
+        'reinforce_online' : REINFORCE_ONLINE(actor = actor),
+        'ppo' : PPO(actor = actor, state_value = state_value),
+        'ac' : ACTOR_CRITIC(actor = actor, state_value = state_value),
+        'random_agent' : RANDOM_AGENT(n_actions = 2),
+    }
+    agent = agents[agent_name]
     
     #RUN
     run(agent, 
         env = env, 
-        steps=10000000, 
-        wandb_cb = True,
-        n_render = 20,
+        steps=steps, 
+        wandb_cb = wandb_cb,
+        n_render = n_render,
         )
     

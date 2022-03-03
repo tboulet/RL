@@ -6,6 +6,7 @@ figures
 wandb
 rbdl
 config
+CONFIGS
 models
 DQN_TP
 
