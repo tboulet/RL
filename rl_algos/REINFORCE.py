@@ -26,7 +26,7 @@ class REINFORCE(AGENT):
     Policy used : On-policy
     Stochastic : Yes
     Actions : discrete (continuous not implemented)
-    States : discrete / continuous
+    States : continuous (discrete not implemented)
     '''
 
     def __init__(self, actor : nn.Module):
@@ -145,13 +145,14 @@ class REINFORCE(AGENT):
 
 
 
-class REINFORCE_ONLINE(AGENT):
+class REINFORCE_OFFPOLICY(AGENT):
     '''REINFORCE agent is an actor RL agent that performs gradient ascends on the estimated objective function to maximize.
+    The offpolicy version add importances weights to keep an unbiased gradient.
     NN trained : Actor
-    Policy used : On-policy
+    Policy used : Off-policy
     Stochastic : Yes
     Actions : discrete (continuous not implemented)
-    States : discrete / continuous
+    States : continuous
     '''
 
     def __init__(self, actor : nn.Module):
@@ -163,7 +164,6 @@ class REINFORCE_ONLINE(AGENT):
         self.policy = actor
         self.opt = optim.Adam(lr = 1e-4, params=self.policy.parameters())
         
-        self.episode = 0
         self.last_prob = None
         self.episode_ended = False
         
@@ -242,7 +242,7 @@ class REINFORCE_ONLINE(AGENT):
                     
                     old_probs = old_probs[:, 0]
                     ratios = (probs / old_probs).detach()
-                    ratios = torch.clamp(ratios, 1 - self.epsilon_clipper, 1 + self.epsilon_clipper)
+                    # ratios = torch.clamp(ratios, 1 - self.epsilon_clipper, 1 + self.epsilon_clipper)
                     log_probs = torch.multiply(log_probs, ratios)
                     
                     loss = torch.multiply(log_probs, G)

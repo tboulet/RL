@@ -12,13 +12,18 @@ def load_smb_env(obs_complexity = 1, action_complexity = 1, is_random = False):
     env = JoypadSpace(env, [RIGHT_ONLY, SIMPLE_MOVEMENT, COMPLEX_MOVEMENT][action_complexity])
     return env
 
-def praise(*args):
-    print()
+def pr_and_raise(*args):
     for arg in args:
         print(arg)
     raise
 
-def praise_not(*args):
-    print()
+def pr(*args):
     for arg in args:
         print(arg)
+
+def pr_shape(*args):
+    for arg in args:
+        try:
+            print(arg.shape)
+        except:
+            print('No shape')

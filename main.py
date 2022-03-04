@@ -21,7 +21,7 @@ try:
     from config import agent_name, steps, wandb_cb, n_render
 except ImportError:
     raise Exception("You need to specify your config in config.py\nConfig template is available at div/config_template.py")
-from rl_algos._ALL_AGENTS import REINFORCE, REINFORCE_ONLINE, DQN, ACTOR_CRITIC, PPO
+from rl_algos._ALL_AGENTS import REINFORCE, REINFORCE_OFFPOLICY, DQN, ACTOR_CRITIC, PPO
 from rl_algos.AGENT import RANDOM_AGENT
 
 
@@ -92,10 +92,12 @@ if __name__ == "__main__":
     
     #ACTOR PI
     actor = nn.Sequential(
-            nn.Linear(n_obs, 32),
+            nn.Linear(n_obs, 64),
             nn.ReLU(),
-            nn.Linear(32, n_actions),
-            nn.Softmax(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, n_actions),
+            nn.Softmax(dim=-1),
         )
     
     #CRITIC Q
@@ -107,15 +109,17 @@ if __name__ == "__main__":
 
     #STATE VALUE V
     state_value = nn.Sequential(
-            nn.Linear(n_obs, 32),
+            nn.Linear(n_obs, 64),
             nn.ReLU(),
-            nn.Linear(32, 1),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
         )
 
     #AGENT
     agents = {'dqn' : DQN(action_value=action_value),
         'reinforce' : REINFORCE(actor=actor),
-        'reinforce_online' : REINFORCE_ONLINE(actor = actor),
+        'reinforce_offpolicy' : REINFORCE_OFFPOLICY(actor = actor),
         'ppo' : PPO(actor = actor, state_value = state_value),
         'ac' : ACTOR_CRITIC(actor = actor, state_value = state_value),
         'random_agent' : RANDOM_AGENT(n_actions = 2),
