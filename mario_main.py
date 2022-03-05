@@ -12,10 +12,15 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 #Gym for environments, WandB for feedback
+from div.env_mario import load_smb_env
 import gym
 import wandb
 #RL agents
 from div.utils import *
+try:
+    from config import agent_name, steps, wandb_cb, n_render
+except ImportError:
+    raise Exception("You need to specify your config in config.py\nConfig template is available at div/config_template.py")
 from rl_algos._ALL_AGENTS import REINFORCE, DQN, ACTOR_CRITIC, PPO
 from rl_algos.AGENT import RANDOM_AGENT
 
@@ -139,7 +144,7 @@ if __name__ == "__main__":
     #RUN
     run(agent, 
         env = env, 
-        steps=500000, 
-        wandb_cb = False,
-        n_render=1,
-        )    
+        steps=steps, 
+        wandb_cb = wandb_cb,
+        n_render = n_render,
+        )  

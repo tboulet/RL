@@ -2,8 +2,8 @@ project="RL"
 entity="timotheboulet"
 
 env_name = 'CartPole-v1'
-agent_name = 'reinforce_offpolicy'
+agent_name = 'ppo'
 
 steps=10000000 
-wandb_cb = True
+wandb_cb = False
 n_render = 1
