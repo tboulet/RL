@@ -55,16 +55,23 @@ DDPG_CONFIG = {"name" : "DDPG",
     }
 
 PPO_CONFIG = {"name" : "PPO",
-    "learning_rate" : 1e-3,
+    "learning_rate_actor" : 1e-4,
+    "learning_rate_critic" : 1e-3,
     "gamma" : 0.99,
-    "timesteps" : 256,
-    "batch_size" : 32,
-    "epochs" : 3,
+    "gae_lambda" : 0.95,
+    
+    "train_freq_episode" : 1,
+    "n_episodes" : 4,
+    "batch_size" : 128,
+    "epochs" : 12,
+    "n_step" : 8,
+    "compute_advantage_method" : 'A_MC',    #In A_MC, A_TD, A_n_step, A_GAE
+    "compute_value_method" : 'V_MC',
+
+    "update_method" : "soft",
     "tau" : 0.99,
     "target_update_interval" : 10000,
-    
-    "update_method" : "soft",
-    "reward_scaler" : None,
+    "reward_scaler" : 100,
     
     "epsilon_clipper" : 0.2,
     "c_critic" : 1,
