@@ -1,3 +1,6 @@
+# Metrics are object with methods called inside every RL agent (after acting, remembering and learning).
+# They log efficiently information using WandB and can be easily defined.
+
 from numbers import Number
 from time import time
 

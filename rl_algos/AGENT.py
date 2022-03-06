@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import torch
 import wandb
 from random import randint
-from METRICS import *
+from RL.METRICS import *
 from div.utils import pr_and_raise, pr_shape
 
 class AGENT(ABC):
@@ -86,7 +86,7 @@ class AGENT(ABC):
         #We compute the discounted sum of the next rewards dynamically.
         T = len(rewards)
         rewards = rewards[:, 0]
-        future_rewards =  [0 for _ in range(T)] + [0]
+        future_rewards =  [None for _ in range(T)] + [0]
         t = T - 1
         while t >= 0:   
             future_rewards[t] = rewards[t] + self.gamma * future_rewards[t+1]
@@ -95,6 +95,30 @@ class AGENT(ABC):
         future_rewards = torch.Tensor(future_rewards).unsqueeze(-1)          
         return future_rewards
     
+    
+    def compute_GAE(self, rewards, observations):
+        '''Compute the Generalized Advantage Estimator (GAE) of advantage function over one episode.
+        rewards : a (T, 1) shaped torch tensor representing rewards
+        observations : a (T, *dims) shaped torch tensor representing observations
+        return : a (T, 1) shaped torch tensor representing advantages functions
+        '''
+        T = len(rewards)
+        rewards = rewards[:, 0].numpy()
+        values = self.state_value(observations)[:, 0].detach().numpy()
+        #We compute the TD residuals delta_t = Rt + (1-Dt) * g * V(St+1) - V(St)
+        deltas = list()
+        for t in range(T-1):
+            deltas.append(rewards[t] + self.gamma * values[t+1] - values[t])
+        deltas.append(rewards[T-1] - values[T-1])   #Last residual is just RT - V(ST) since this is the end of episode.
+        #We compute dynamically the GAE
+        A_GAE = [None for _ in range(T)] + [0]
+        t = T - 1
+        while t >= 0:
+            A_GAE[t] = deltas[t] + self.gamma * self.gae_lambda * A_GAE[t + 1]
+            t -= 1
+        A_GAE.pop(-1)
+        A_GAE = torch.Tensor(A_GAE).unsqueeze(-1)                
+        return A_GAE
        
 
 #Use the following agent as a model for minimum restrictions on AGENT subclasses :

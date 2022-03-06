@@ -12,17 +12,10 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 #Gym for environments, WandB for feedback
-from div.ENV import env
 import gym
 import wandb
-#RL agents
 from div.utils import *
-try:
-    from config import agent_name, steps, wandb_cb, n_render
-except ImportError:
-    raise Exception("You need to specify your config in config.py\nConfig template is available at div/config_template.py")
-from rl_algos._ALL_AGENTS import REINFORCE, REINFORCE_OFFPOLICY, DQN, ACTOR_CRITIC, PPO
-from rl_algos.AGENT import RANDOM_AGENT
+
 
 
 def run(agent, env, steps, wandb_cb = True, 
@@ -86,45 +79,24 @@ def run(agent, env, steps, wandb_cb = True,
     
 
 if __name__ == "__main__":
+    #Import config
+    try:
+        from config import episodes, steps, wandb_cb, n_render
+    except ImportError:
+        raise Exception("You need to specify your config in config.py\nConfig template is available at div/config_template.py")
+    
     #ENV
-    n_obs = env.observation_space.shape[0]
-    n_actions = env.action_space.n
+    from RL.ENV import create_env
+    env = create_env()
     
-    #ACTOR PI
-    actor = nn.Sequential(
-            nn.Linear(n_obs, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, n_actions),
-            nn.Softmax(dim=-1),
-        )
+    #NETWORKS
+    from RL.NETWORKS import create_networks
+    networks = create_networks(env)
     
-    #CRITIC Q
-    action_value = nn.Sequential(
-            nn.Linear(n_obs, 32),
-            nn.ReLU(),
-            nn.Linear(32, n_actions),
-        )
-
-    #STATE VALUE V
-    state_value = nn.Sequential(
-            nn.Linear(n_obs, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-        )
 
     #AGENT
-    agents = {'dqn' : DQN(action_value=action_value),
-        'reinforce' : REINFORCE(actor=actor),
-        'reinforce_offpolicy' : REINFORCE_OFFPOLICY(actor = actor),
-        'ppo' : PPO(actor = actor, state_value = state_value),
-        'ac' : ACTOR_CRITIC(actor = actor, state_value = state_value),
-        'random_agent' : RANDOM_AGENT(n_actions = 2),
-    }
-    agent = agents[agent_name]
+    from rl_algos._ALL_AGENTS import create_agent
+    agent = create_agent(networks)
     
     #RUN
     run(agent, 

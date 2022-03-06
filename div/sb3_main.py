@@ -20,8 +20,8 @@ from div.render import render_agent
 from div.run import run_for_sb3 
 from div.utils import *
 
-from MEMORY import Memory
-from METRICS import *
+from RL.MEMORY import Memory
+from RL.METRICS import *
 
 from rl_algos_torch.DQN import DQN
 

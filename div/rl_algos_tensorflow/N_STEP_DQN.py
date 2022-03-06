@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 kl = tf.keras.layers
 ki = tf.keras.initializers
 
-from MEMORY import Memory
-from CONFIGS import DQN_CONFIG
+from RL.MEMORY import Memory
+from RL.CONFIGS import DQN_CONFIG
 
 class N_STEP_DQN():
 

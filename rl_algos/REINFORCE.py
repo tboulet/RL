@@ -14,9 +14,9 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from torch.distributions.categorical import Categorical
 
-from MEMORY import Memory
-from CONFIGS import REINFORCE_CONFIG
-from METRICS import Metric_Performances, Metric_Time_Count, Metric_Total_Reward, MetricS_On_Learn
+from RL.MEMORY import Memory
+from RL.CONFIGS import REINFORCE_CONFIG
+from RL.METRICS import Metric_Performances, Metric_Time_Count, Metric_Total_Reward, MetricS_On_Learn
 from rl_algos.AGENT import AGENT
 
 

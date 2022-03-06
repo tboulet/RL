@@ -14,9 +14,9 @@ import torchvision.transforms as T
 from torch.distributions.categorical import Categorical
 
 from div.utils import *
-from MEMORY import Memory
-from CONFIGS import PPO_CONFIG
-from METRICS import *
+from RL.MEMORY import Memory
+from RL.CONFIGS import PPO_CONFIG
+from RL.METRICS import *
 from rl_algos.AGENT import AGENT
 
 class PPO(AGENT):
@@ -98,8 +98,11 @@ class PPO(AGENT):
             if self.reward_scaler is not None:
                 rewards = rewards / self.reward_scaler
             #Compute V and A
-            advantages.append(self.compute_TD(rewards, observations) - self.state_value(observations))
-            V_targets.append(self.compute_TD(rewards, observations, model = 'state_value_target'))
+            # A_episode = self.compute_TD(rewards, observations) - self.state_value(observations)
+            A_episode = self.compute_GAE(rewards, observations)
+            V_targets_episode = self.compute_TD(rewards, observations, model = 'state_value_target')
+            advantages.append(A_episode)
+            V_targets.append(V_targets_episode)
         advantages = torch.concat(advantages, axis = 0).detach()
         V_targets = torch.concat(V_targets, axis = 0).detach()
         observations, actions, rewards, dones, probs = [torch.concat([episode[elem] for episode in episodes], axis = 0) for elem in range(len(episodes[0]))]

@@ -15,9 +15,9 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from torch.distributions.categorical import Categorical
 
-from MEMORY import Memory
-from CONFIGS import ACTOR_CRITIC_CONFIG
-from METRICS import *
+from RL.MEMORY import Memory
+from RL.CONFIGS import ACTOR_CRITIC_CONFIG
+from RL.METRICS import *
 from rl_algos.AGENT import AGENT
 
 class ACTOR_CRITIC(AGENT):

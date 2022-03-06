@@ -12,9 +12,9 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 
-from MEMORY import Memory
-from CONFIGS import DQN_CONFIG
-from METRICS import *
+from RL.MEMORY import Memory
+from RL.CONFIGS import DQN_CONFIG
+from RL.METRICS import *
 from rl_algos.AGENT import AGENT
 
 class DQN(AGENT):

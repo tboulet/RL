@@ -11,8 +11,8 @@ from tensorflow.keras import layers as kl
 from tensorflow.keras import initializers as ki
 from tensorflow.keras import losses as klosses
 
-from MEMORY import Memory
-from CONFIGS import DQN_CONFIG
+from RL.MEMORY import Memory
+from RL.CONFIGS import DQN_CONFIG
 
 class DQN():
 

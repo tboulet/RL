@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from CONFIGS import DUMMY_CONFIG
+from RL.CONFIGS import DUMMY_CONFIG
 kl = tf.keras.layers
 ki = tf.keras.initializers
 
@@ -14,8 +14,8 @@ import random
 import matplotlib.pyplot as plt
 import wandb
 
-from MEMORY import Memory
-from CONFIGS import REINFORCE_CONFIG
+from RL.MEMORY import Memory
+from RL.CONFIGS import REINFORCE_CONFIG
 
 class REINFORCE():
 

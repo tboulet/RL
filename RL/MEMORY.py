@@ -68,7 +68,7 @@ class Memory():
                 idx, idx_next = indexes_dones[i:i+2]
                 res_batches.append(
                     self.sample(pos_start = idx, sample_size = idx_next - idx, method = 'batch')
-                )
+                )   
             return res_batches
 
         else:
