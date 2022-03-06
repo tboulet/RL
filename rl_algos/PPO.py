@@ -98,8 +98,8 @@ class PPO(AGENT):
             if self.reward_scaler is not None:
                 rewards = rewards / self.reward_scaler
             #Compute V and A
-            advantages.append(self.compute_critic(self.compute_advantage_method, observations = observations, rewards = rewards, dones = dones))
-            V_targets.append(self.compute_critic(self.compute_value_method, observations = observations, rewards = rewards, dones = dones))
+            advantages.append(self.compute_TD(rewards, observations) - self.state_value(observations))
+            V_targets.append(self.compute_TD(rewards, observations, model = 'state_value_target'))
         advantages = torch.concat(advantages, axis = 0).detach()
         V_targets = torch.concat(V_targets, axis = 0).detach()
         observations, actions, rewards, dones, probs = [torch.concat([episode[elem] for episode in episodes], axis = 0) for elem in range(len(episodes[0]))]

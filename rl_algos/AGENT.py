@@ -44,46 +44,58 @@ class AGENT(ABC):
             wandb.log(metric, step = self.step)
         self.metrics_saved = list()
         
-    def compute_critic(self, method, rewards, dones = None, observations = None, next_observations = None):
-        '''Estimate some critic values such as advantage function A_pi_st_at of each transitions (s, a, r)t, noted A_s,  on an episode.
-        method : string, method used for advantage estimation, in (TD, MC, n_step, GAE) or (total_reward)
-        *args : elements for computing A_s, torch tensor.
-        return : A_s as a torch tensor of shape (T, 1)
+    def compute_TD(self, rewards, observations, model = "state_value"):
+        '''Compute the n_step TD estimates V(s) of state values over one episode, where n_step is an int attribute of agent.
+        It follows the Temporal Difference relation V(St) = Rt + g*Rt+1 + ... + g^n-1 * Rt+n-1 + g^n * V(St+n)
+        rewards : a (T, 1) shaped torch tensor representing rewards
+        observations : a (T, *dims) shaped torch tensor representing observations
+        model : the name of the attribute of agent used for computing state values, in ('state_value', 'state_value_target')
+        return : a (T, 1) shaped torch tensor representing state values
         '''
-        if method == 'V_MC':
-            rewards = rewards[:, 0] #(T,)
-            values = list()
-            t = len(rewards) - 1
-            next_reward = 0
-            while t >= 0:
-                next_reward = rewards[t] + self.gamma * next_reward
-                values.insert(0, next_reward)
-                t -= 1
-            res = torch.Tensor(values).unsqueeze(-1)           
-                    
-        elif method == 'A_MC':
-            rewards = rewards[:, 0] #(T,)
-            advantages = list()
-            t = len(rewards) - 1
-            next_reward = 0
-            while t >= 0:
-                next_reward = rewards[t] + self.gamma * next_reward
-                advantages.insert(0, next_reward)
-                t -= 1
-            res = torch.Tensor(advantages).unsqueeze(-1) - self.state_value(observations)            
+        n = self.n_step
         
-        elif method == 'V_TD':
-            res = rewards + (1 - dones) * self.gamma * self.state_value(next_observations)
+        #We compute the discounted sum of the n next rewards dynamically.
+        T = len(rewards)
+        rewards = rewards[:, 0]
+        n_next_rewards =  [0 for _ in range(T)] + [0]
+        t = T - 1
+        while t >= 0:   
+            if t >= T - n:
+                n_next_rewards[t] = rewards[t] + self.gamma * n_next_rewards[t+1]
+            else:
+                n_next_rewards[t] = rewards[t] + self.gamma * n_next_rewards[t+1] - (self.gamma ** n) * rewards[t+n]
+            t -= 1
+        n_next_rewards.pop(-1)
+        n_next_rewards = torch.Tensor(n_next_rewards).unsqueeze(-1)
 
-        elif method == 'A_TD':
-            res = rewards + (1 - dones) * self.gamma * self.state_value(next_observations) - self.state_value(observations)
+        #We compute the state value, and shift them forward in order to add them or not to the estimate.
+        model = getattr(self, model)
+        state_values = model(observations)
+        state_values_to_add = torch.concat((state_values, torch.zeros(n, 1)), axis = 0)[n:]
         
-
+        V_targets = n_next_rewards + state_values_to_add
+        return V_targets    
         
-        else:
-            raise Exception(f"Method '{method}' for computing advantage estimate is not implemented.")
-
-        return res
+        
+    def compute_MC(self, rewards):
+        '''Compute the sums of future rewards (discounted) over one episode.
+        It is the Monte Carlo estimation of a state value : Rt + g * Rt+1 + ... + g^T-t * RT
+        rewards : a (T, 1) shaped torch tensor representing rewards
+        return : a (T, 1) shaped torch tensor representing discounted sum of future rewards
+        '''
+        #We compute the discounted sum of the next rewards dynamically.
+        T = len(rewards)
+        rewards = rewards[:, 0]
+        future_rewards =  [0 for _ in range(T)] + [0]
+        t = T - 1
+        while t >= 0:   
+            future_rewards[t] = rewards[t] + self.gamma * future_rewards[t+1]
+            t -= 1
+        future_rewards.pop(-1)
+        future_rewards = torch.Tensor(future_rewards).unsqueeze(-1)          
+        return future_rewards
+    
+       
 
 #Use the following agent as a model for minimum restrictions on AGENT subclasses :
 class RANDOM_AGENT(AGENT):
