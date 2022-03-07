@@ -1,30 +1,19 @@
-#Torch for deep learning
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
-from torchsummary import summary
-#Python library
-import sys
-import math
-import random
-import matplotlib.pyplot as plt
-import numpy as np
 #Gym for environments, WandB for feedback
-import gym
 import wandb
-from div.utils import *
 
 
-
-def run(agent, env, steps, wandb_cb = True, 
+def run(agent, 
+        env, 
+        steps = float('inf'), 
+        episodes = float('inf'), 
+        wandb_cb = False, 
         n_render = 20
         ):
     '''Train an agent on an env.
     agent : an AGENT instance (with methods act, learn and remember implemented)
     env : a gym env (with methods reset, step, render)
     steps : int, number of steps of training
+    episodes : int, number of maximal episodes maximal for training
     wandb_cb : bool, whether metrics are logged in WandB
     n_render : int, one episode on n_render is rendered
     '''
@@ -49,7 +38,7 @@ def run(agent, env, steps, wandb_cb = True,
         obs = env.reset()
         
         
-        while not done and step < steps:
+        while not done and step < steps and episode < episodes:
             action = agent.act(obs)                                                 #Agent acts
             next_obs, reward, done, info = env.step(action)                         #Env reacts            
             agent.remember(obs, action, reward, done, next_obs, info)    #Agent saves previous transition in its memory
@@ -93,9 +82,8 @@ if __name__ == "__main__":
     from RL.NETWORKS import create_networks
     networks = create_networks(env)
     
-
     #AGENT
-    from rl_algos._ALL_AGENTS import create_agent
+    from RL.RL_AGENTS import create_agent
     agent = create_agent(networks)
     
     #RUN

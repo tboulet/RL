@@ -21,7 +21,7 @@ try:
     from config import agent_name, steps, wandb_cb, n_render
 except ImportError:
     raise Exception("You need to specify your config in config.py\nConfig template is available at div/config_template.py")
-from rl_algos._ALL_AGENTS import REINFORCE, DQN, ACTOR_CRITIC, PPO
+from RL.RL_AGENTS import REINFORCE, DQN, ACTOR_CRITIC, PPO
 from rl_algos.AGENT import RANDOM_AGENT
 
 
