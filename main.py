@@ -89,7 +89,8 @@ if __name__ == "__main__":
     #RUN
     run(agent, 
         env = env, 
-        steps=steps, 
+        steps = steps, 
+        episodes = episodes,
         wandb_cb = wandb_cb,
         n_render = n_render,
         )

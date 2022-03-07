@@ -1,0 +1,6 @@
+When implementing a new agent MY_AGENT you need to :
+- create rl_algos/MY_AGENT.py   that contains the class MY_AGENT
+- create CONFIG_MY_AGENT in RL/CONFIGS.py
+- implement networks adapted to the env in RL/NETWORKS.py
+- add your agent in create_agent() in RL/RL_AGENTS.py 
+- choose adapted config (env, agent_name...) in config.py

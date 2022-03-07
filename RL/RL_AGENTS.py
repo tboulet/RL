@@ -3,6 +3,7 @@ from rl_algos.REINFORCE import REINFORCE, REINFORCE_OFFPOLICY
 from rl_algos.DQN import DQN
 from rl_algos.ACTOR_CRITIC import ACTOR_CRITIC
 from rl_algos.PPO import PPO
+from rl_algos.DDPG import DDPG
 
 
 def create_agent(networks):
@@ -31,6 +32,11 @@ def create_agent(networks):
             actor = networks['actor']
             state_value = networks['state_value']
             agent = PPO(actor, state_value)
+            
+        elif agent_name == 'ddpg':
+            actor = networks['actor']
+            action_value = networks['action_value']
+            agent = DDPG(actor, action_value)
     
         return agent
     

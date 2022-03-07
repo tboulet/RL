@@ -43,8 +43,46 @@ class AGENT(ABC):
         for metric in self.metrics_saved:
             wandb.log(metric, step = self.step)
         self.metrics_saved = list()
+    
+    
+    def compute_SARSA(self, rewards, next_observations, next_actions, dones, Q_scalar = True, model = 'action_value'):
+        '''Compute the 1 step TD estimates V(s) of state values.
+        observations, actions, rewards, next_observations, next_actions : (T, *dims) shaped torch tensors
+        model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
+        return : a (T, 1) shaped torch tensor representing state values
+        '''
+        model = getattr(self, model)
         
-    def compute_TD(self, rewards, observations, model = "state_value"):
+        if Q_scalar :
+            Q_s_future = model(next_observations, next_actions)
+        else:
+            raise
+        
+        return rewards + (1 - dones) * self.gamma * Q_s_future
+    
+    
+    def compute_SARSA_n_step(self, rewards, next_observations, next_actions, dones):
+        '''Compute the 1 step TD estimates V(s) of state values.
+        observations, actions, rewards, next_observations, next_actions : (T, *dims) shaped torch tensors
+        model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
+        return : a (T, 1) shaped torch tensor representing state values
+        '''
+        raise #To implement
+    
+    
+    def compute_TD(self, observations, actions, rewards, next_observations, dones, model = 'state_value'):
+        '''Compute the 1 step TD estimates V(s) of state values.
+        rewards : a (T, 1) shaped torch tensor representing rewards
+        observations : a (T, *dims) shaped torch tensor representing observations
+        model : the name of the attribute of agent used for computing state values, in ('state_value', 'state_value_target')
+        return : a (T, 1) shaped torch tensor representing state values
+        '''
+        model = getattr(self, model)
+        raise   #test phase
+        return rewards + (1 - dones) * self.gamma * model(next_observations)
+    
+    
+    def compute_TD_n_step(self, rewards, observations, model = "state_value"):
         '''Compute the n_step TD estimates V(s) of state values over one episode, where n_step is an int attribute of agent.
         It follows the Temporal Difference relation V(St) = Rt + g*Rt+1 + ... + g^n-1 * Rt+n-1 + g^n * V(St+n)
         rewards : a (T, 1) shaped torch tensor representing rewards

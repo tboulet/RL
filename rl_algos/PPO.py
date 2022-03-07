@@ -100,7 +100,7 @@ class PPO(AGENT):
             #Compute V and A
             # A_episode = self.compute_TD(rewards, observations) - self.state_value(observations)
             A_episode = self.compute_GAE(rewards, observations)
-            V_targets_episode = self.compute_TD(rewards, observations, model = 'state_value_target')
+            V_targets_episode = self.compute_TD_n_step(rewards, observations, model = 'state_value_target')
             advantages.append(A_episode)
             V_targets.append(V_targets_episode)
         advantages = torch.concat(advantages, axis = 0).detach()
