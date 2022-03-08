@@ -1,9 +1,7 @@
 from copy import copy, deepcopy
 import numpy as np
 import math
-import gym
 import sys
-import random
 import matplotlib.pyplot as plt
 
 import torch
@@ -14,7 +12,7 @@ import torchvision.transforms as T
 from torch.distributions.categorical import Categorical
 
 from div.utils import *
-from RL.MEMORY import Memory
+from RL.MEMORY import Memory, Memory_episodic
 from RL.CONFIGS import PPO_CONFIG
 from RL.METRICS import *
 from rl_algos.AGENT import AGENT
@@ -32,18 +30,14 @@ class PPO(AGENT):
     def __init__(self, actor : nn.Module, state_value : nn.Module):
         metrics = [MetricS_On_Learn, Metric_Total_Reward, Metric_Count_Episodes]
         super().__init__(config = PPO_CONFIG, metrics = metrics)
-        self.memory_transition = Memory(MEMORY_KEYS = ['observation', 'action','reward', 'done', 'prob'])
-        self.memory_episodes = Memory(MEMORY_KEYS = ['episode'])
+        self.memory = Memory_episodic(MEMORY_KEYS = ['observation', 'action','reward', 'done', 'prob'])
         
         self.state_value = state_value
         self.state_value_target = deepcopy(state_value)
         self.opt_critic = optim.Adam(lr = self.learning_rate_critic, params=self.state_value.parameters())
         
         self.policy = actor
-        
-        self.last_prob = None
-        self.episode_ended = False
-                
+                        
         
     def act(self, observation, mask = None):
         '''Ask the agent to take a decision given an observation.
@@ -75,20 +69,17 @@ class PPO(AGENT):
         self.step += 1
         
         #Learn every n end of episodes
-        if not self.episode_ended:
+        if not self.memory.done:
             return
         self.episode += 1
-        self.episode_ended = False
         if self.episode % self.train_freq_episode != 0:
             return
         
         #Sample trajectories
-        episodes = self.memory_episodes.sample(
+        episodes = self.memory.sample(
             method = "last",
             sample_size=self.n_episodes,
-            as_tensor=False,
             )
-        episodes = episodes[0]
         
         #Compute A_s and V_s estimates and concatenate trajectories. 
         advantages = list()
@@ -194,12 +185,13 @@ class PPO(AGENT):
         return : metrics, a list of metrics computed during this remembering step.
         '''
         prob = self.last_prob.detach()
-        self.memory_transition.remember((observation, action, reward, done, prob, info))
-        if done:
-            self.episode_ended = True
-            episode = self.memory_transition.sample(method = 'all', as_tensor=True)
-            self.memory_transition.__empty__()
-            self.memory_episodes.remember((episode,))
+        self.memory.remember((observation, action, reward, done, prob))
+        # self.memory_transition.remember((observation, action, reward, done, prob, info))
+        # if done:
+        #     self.episode_ended = True
+        #     episode = self.memory_transition.sample(method = 'all', as_tensor=True)
+        #     self.memory_transition.__empty__()
+        #     self.memory_episodes.remember((episode,))
             
         #Save metrics
         values = {"obs" : observation, "action" : action, "reward" : reward, "done" : done}

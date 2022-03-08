@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import gym.spaces as spaces
 
 def create_networks(env):
-    #C
+    # State space continuous but action are discrete
     if isinstance(env.action_space, spaces.Discrete) and isinstance(env.observation_space, spaces.Box):
         print(f"\nCreation of networks for gym environment {env}. Type of spaces :\nS = CONTINUOUS\nA = DISCRETE\n")
     
@@ -40,8 +40,8 @@ def create_networks(env):
                 nn.Linear(64, 1),
             )
         
-    
-    if isinstance(env.action_space, spaces.Box) and isinstance(env.observation_space, spaces.Box):
+    # State space is continuous but action are also continuous here
+    elif isinstance(env.action_space, spaces.Box) and isinstance(env.observation_space, spaces.Box):
         print(f"\nCreation of networks for gym environment {env}. Type of spaces :\nS = CONTINUOUS\nA = CONTINUOUS\n")
     
         n_obs, *args = env.observation_space.shape
@@ -60,7 +60,7 @@ def create_networks(env):
                 self.fc3 = nn.Linear(64, dim_actions)
             def forward(self, x):
                 x = F.relu(self.fc1(x))
-                x = F.relu(self.fc2(x))
+                # x = F.relu(self.fc2(x))
                 x = torch.tanh(self.fc3(x))                
                 action = x * self.range_action / 2 + self.mean_action
                 return action
@@ -70,17 +70,19 @@ def create_networks(env):
         class Action_value_continuous(nn.Module):
             def __init__(self):
                 super(Action_value_continuous, self).__init__()
-                self.fc_obs1 = nn.Linear(n_obs, 16)
-                self.fc_obs2 = nn.Linear(16, 16)
-                self.fc_action1 = nn.Linear(dim_actions, 16)
-                self.fc_action2 = nn.Linear(16, 16)
-                self.fc_global1 = nn.Linear(32, 32)
+                self.fc_obs1 = nn.Linear(n_obs, 32)
+                self.fc_obs2 = nn.Linear(32, 32)
+                
+                self.fc_action1 = nn.Linear(dim_actions, 32)
+                self.fc_action2 = nn.Linear(32, 32)
+                
+                self.fc_global1 = nn.Linear(64, 32)
                 self.fc_global2 = nn.Linear(32, 1)
             def forward(self, s, a):
                 s = F.relu(self.fc_obs1(s))
-                s = F.relu(self.fc_obs2(s))
+                # s = F.relu(self.fc_obs2(s))
                 a = F.relu(self.fc_action1(a))
-                a = F.relu(self.fc_action2(a))
+                # a = F.relu(self.fc_action2(a))
                 sa = torch.concat([s,a], dim = -1)
                 sa = F.relu(self.fc_global1(sa))
                 sa = self.fc_global2(sa)
@@ -96,4 +98,5 @@ def create_networks(env):
     return {"actor" : actor,
             "state_value" : state_value,
             "action_value" : action_value,
+            "Q_table" : None,
             }

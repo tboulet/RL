@@ -37,9 +37,8 @@ class REINFORCE(AGENT):
         self.policy = actor
         self.opt = optim.Adam(lr = 1e-4, params=self.policy.parameters())
         
-        self.episode = 0
-        self.must_learn = False
-        
+        self.episode_ended = False
+                
     def act(self, observation, mask = None):
         '''Ask the agent to take a decision given an observation.
         observation : an (n_obs,) shaped nummpy observation.
@@ -64,16 +63,18 @@ class REINFORCE(AGENT):
 
     def learn(self):
         '''Do one step of learning.
-        return : metrics, a list of metrics computed during this learning step.
         '''
         values = dict()
         self.step += 1
         
         #Learn every batch_size episodes
-        if not self.must_learn:
+        if not self.episode_ended:
             return
-        self.must_learn = False
-        
+        self.episode += 1
+        self.episode_ended = False
+        if self.episode % self.batch_size != 0:
+            return
+                
         #Sample trajectories
         batches = self.memory.sample(
             method = "episodic_batches",
@@ -130,11 +131,12 @@ class REINFORCE(AGENT):
         *arguments : elements to remember, as numerous and in the same order as in self.memory.MEMORY_KEYS
         return : metrics, a list of metrics computed during this remembering step.
         '''
-        self.memory.remember((observation, action, reward, done, next_observation, info))
+        self.memory_transition.remember((observation, action, reward, done, info))
         if done:
-            self.episode += 1
-            if self.episode % self.batch_size == 0:
-                self.must_learn = True
+            self.episode_ended = True
+            episode = self.memory_transition.sample(method = 'all', as_tensor=True)
+            self.memory_transition.__empty__()
+            self.memory_episodes.remember((episode,))
             
         #Save metrics
         values = {"obs" : observation, "action" : action, "reward" : reward, "done" : done}
