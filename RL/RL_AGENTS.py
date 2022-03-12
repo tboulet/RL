@@ -1,6 +1,7 @@
 from rl_algos.AGENT import RANDOM_AGENT
 from rl_algos.REINFORCE import REINFORCE, REINFORCE_OFFPOLICY
 from rl_algos.DQN import DQN
+from rl_algos.N_DQN import N_DQN
 from rl_algos.ACTOR_CRITIC import ACTOR_CRITIC
 from rl_algos.PPO import PPO
 from rl_algos.DDPG import DDPG
@@ -13,6 +14,10 @@ def create_agent(networks):
         if agent_name == 'dqn':
             action_value = networks['action_value']
             agent = DQN(action_value)
+            
+        elif agent_name == 'n_dqn':
+            action_value = networks['action_value']
+            agent = N_DQN(action_value)
         
         elif agent_name == 'reinforce':
             actor = networks['actor']

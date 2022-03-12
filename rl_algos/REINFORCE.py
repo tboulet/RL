@@ -14,8 +14,8 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from torch.distributions.categorical import Categorical
 
-from RL.MEMORY import Memory
-from RL.CONFIGS import REINFORCE_CONFIG
+from RL.MEMORY import Memory, Memory_episodic
+from RL.CONFIGS import REINFORCE_CONFIG, REINFORCE_OFFPOLICY_CONFIG
 from RL.METRICS import Metric_Performances, Metric_Time_Count, Metric_Total_Reward, MetricS_On_Learn
 from rl_algos.AGENT import AGENT
 
@@ -32,12 +32,11 @@ class REINFORCE(AGENT):
     def __init__(self, actor : nn.Module):
         metrics = [MetricS_On_Learn, Metric_Total_Reward, Metric_Time_Count]
         super().__init__(config = REINFORCE_CONFIG, metrics = metrics)
-        self.memory = Memory(MEMORY_KEYS = ['observation', 'action','reward', 'done'])
+        self.memory = Memory_episodic(MEMORY_KEYS = ['observation', 'action','reward', 'done'])
         
         self.policy = actor
         self.opt = optim.Adam(lr = 1e-4, params=self.policy.parameters())
         
-        self.episode_ended = False
                 
     def act(self, observation, mask = None):
         '''Ask the agent to take a decision given an observation.
@@ -67,51 +66,40 @@ class REINFORCE(AGENT):
         values = dict()
         self.step += 1
         
-        #Learn every batch_size episodes
-        if not self.episode_ended:
+        #Learn only at the end of episodes, and only every train_freq_episode episodes.
+        if not self.memory.done:
             return
         self.episode += 1
-        self.episode_ended = False
-        if self.episode % self.batch_size != 0:
+        if self.episode % self.train_freq_episode != 0:
             return
                 
         #Sample trajectories
-        batches = self.memory.sample(
-            method = "episodic_batches",
-            )
+        episodes = self.memory.sample(method='last', sample_size=self.n_episode)
         
-        #Compute mean value of gradients over a batch
+        #Compute mean value of gradients over a batch of episodes
         for _ in range(self.gradient_steps):
             loss_mean = torch.tensor(0.)
             
-            for observations, actions, rewards, dones in batches:
+            for observations, actions, rewards, dones in episodes:
                 
                 #Some actions dtype problem
                 actions = actions.to(dtype = torch.int64)
-                
                 #Scaling the rewards
                 if self.reward_scaler is not None:
                     rewards /= self.reward_scaler
                 
                 #Compute Gt the discounted sum of future rewards
-                ep_lenght = rewards.shape[0]    #T
-                rewards = rewards[:,0].numpy().tolist()
-                G = [rewards[-1]] 
-                for i in range(1, ep_lenght):
-                    t = ep_lenght - i
-                    previous_G_t =  rewards[t] + self.gamma * G[0]
-                    G.insert(0, previous_G_t)
-                G = torch.tensor(G)
-                
+                Gt_s = self.compute_MC(rewards)
+                                
                 #Compute log probs
                 probs = self.policy(observations)   #(T, n_actions)
                 probs = torch.gather(probs, dim = 1, index = actions)   #(T, 1)
                 log_probs = torch.log(probs)[:,0]     #(T,)
                 
                 #Compute loss = -sum_t( G_t * log_proba_t ) and add it to mean loss
-                loss = torch.multiply(log_probs, G)
+                loss = torch.multiply(log_probs, Gt_s)
                 loss = - torch.sum(loss)
-                loss_mean += loss / self.batch_size
+                loss_mean += loss / self.n_episode
                 
             #Backpropagate to improve policy
             self.opt.zero_grad()
@@ -129,15 +117,9 @@ class REINFORCE(AGENT):
     def remember(self, observation, action, reward, done, next_observation, info={}, **param):
         '''Save elements inside memory.
         *arguments : elements to remember, as numerous and in the same order as in self.memory.MEMORY_KEYS
-        return : metrics, a list of metrics computed during this remembering step.
         '''
-        self.memory_transition.remember((observation, action, reward, done, info))
-        if done:
-            self.episode_ended = True
-            episode = self.memory_transition.sample(method = 'all', as_tensor=True)
-            self.memory_transition.__empty__()
-            self.memory_episodes.remember((episode,))
-            
+        self.memory.remember((observation, action, reward, done))
+                    
         #Save metrics
         values = {"obs" : observation, "action" : action, "reward" : reward, "done" : done}
         self.add_metric(mode = 'remember', **values)
@@ -159,15 +141,12 @@ class REINFORCE_OFFPOLICY(AGENT):
 
     def __init__(self, actor : nn.Module):
         metrics = [MetricS_On_Learn, Metric_Total_Reward, Metric_Time_Count]
-        super().__init__(config = REINFORCE_CONFIG, metrics = metrics)
-        self.memory_transition = Memory(MEMORY_KEYS = ['observation', 'action','reward', 'done', 'prob'])
-        self.memory_episodes = Memory(MEMORY_KEYS = ['episode'])
+        super().__init__(config = REINFORCE_OFFPOLICY_CONFIG, metrics = metrics)
+        self.memory = Memory_episodic(MEMORY_KEYS = ['observation', 'action','reward', 'done', 'prob'])
         
         self.policy = actor
         self.opt = optim.Adam(lr = 1e-4, params=self.policy.parameters())
         
-        self.last_prob = None
-        self.episode_ended = False
         
     def act(self, observation, mask = None):
         '''Ask the agent to take a decision given an observation.
@@ -194,23 +173,22 @@ class REINFORCE_OFFPOLICY(AGENT):
 
     def learn(self):
         '''Do one step of learning.
-        return : metrics, a list of metrics computed during this learning step.
         '''
         values = dict()
         self.step += 1
         
-        #Learn when a done=True
-        if not self.episode_ended:
+        #Learn only at the end of episodes, and only every train_freq_episodes episodes.
+        if not self.memory.done:
             return
-        self.episode_ended = False
+        self.episode += 1
+        if self.episode % self.train_freq_episode != 0:
+            return
         
         #Sample trajectories
-        episodes = self.memory_episodes.sample(
+        episodes = self.memory.sample(
             method = "last",
-            sample_size=128,
-            as_tensor=False,
+            sample_size=self.n_episode,
             )
-        episodes = episodes[0]
             
         #Compute mean value of gradients over a batch
         for _ in range(self.gradient_steps):
@@ -227,14 +205,7 @@ class REINFORCE_OFFPOLICY(AGENT):
                     rewards /= self.reward_scaler
                 
                 #Compute Gt the discounted sum of future rewards
-                ep_lenght = rewards.shape[0]    #T
-                rewards = rewards[:,0].numpy().tolist()
-                G = [rewards[-1]] 
-                for i in range(1, ep_lenght):
-                    t = ep_lenght - i
-                    previous_G_t =  rewards[t] + self.gamma * G[0]
-                    G.insert(0, previous_G_t)
-                G = torch.tensor(G)
+                Gt_s = self.compute_MC(rewards)
 
                 #Compute loss
                 if self.J_method == "ratio_ln":
@@ -247,7 +218,7 @@ class REINFORCE_OFFPOLICY(AGENT):
                     # ratios = torch.clamp(ratios, 1 - self.epsilon_clipper, 1 + self.epsilon_clipper)
                     log_probs = torch.multiply(log_probs, ratios)
                     
-                    loss = torch.multiply(log_probs, G)
+                    loss = torch.multiply(log_probs, Gt_s)
                     loss = - torch.sum(loss)
                     loss_mean += loss / batch_size
                 
@@ -258,7 +229,7 @@ class REINFORCE_OFFPOLICY(AGENT):
                     ratios = probs / old_probs
                     ratios = torch.clamp(ratios, 1 - self.epsilon_clipper, 1 + self.epsilon_clipper)
                     
-                    loss = - torch.multiply(ratios, G)
+                    loss = - torch.multiply(ratios, Gt_s)
                     loss = torch.sum(loss)
                     loss_mean += loss / batch_size
                 
@@ -282,12 +253,7 @@ class REINFORCE_OFFPOLICY(AGENT):
         return : metrics, a list of metrics computed during this remembering step.
         '''
         prob = self.last_prob
-        self.memory_transition.remember((observation, action, reward, done, prob, info))
-        if done:
-            self.episode_ended = True
-            episode = self.memory_transition.sample(method = 'all')
-            self.memory_transition.__empty__()
-            self.memory_episodes.remember((episode,))
+        self.memory.remember((observation, action, reward, done, prob, info))
             
         #Save metrics
         values = {"obs" : observation, "action" : action, "reward" : reward, "done" : done, "prob" : prob}

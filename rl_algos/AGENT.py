@@ -45,41 +45,114 @@ class AGENT(ABC):
         self.metrics_saved = list()
     
     
-    def compute_SARSA(self, rewards, next_observations, next_actions, dones, Q_scalar = True, model = 'action_value'):
-        '''Compute the 1 step TD estimates V(s) of state values.
-        observations, actions, rewards, next_observations, next_actions : (T, *dims) shaped torch tensors
+    
+    
+    def QSA(self, model, observations, actions):
+        '''Compute Q(S,A) as a (T, 1) batch of scalar values.
+        model : action value model
+        observations : a (T, *dims) shaped tensor
+        actions : a (T, 1) shaped tensor
+        return : a (T, 1) shaped tensor [Q(s,a) for s,a in zip(S, A)]
+        '''
+        Q_s_a = model(observations)
+        Q_s = Q_s_a.gather(dim = 1, index = actions)
+        return Q_s
+    
+    def pi(self, observations):
+        '''Choose action without impacting training.
+        observations : a (T, *dims) shaped tensor representing observations
+        actions : a (T, *dim_actions) shaped tensor reprensenting actions taken
+        '''
+        return torch.Tensor([self.act(observation = observation, training = False) for observation in observations.numpy()]).unsqueeze(dim = -1)
+    
+    def compute_TD(self, rewards, next_observations, dones, model = 'state_value', importance_weights = None):
+        '''Compute the 1 step TD estimates V(s) of state values : V_pi(St) = E_mu[imp_weights_t * (Rt + g * V(St+1))]
+        rewards, next_observations, dones : (T, 1) shaped torch tensors representing rewards, next_observations, dones
+        model : the name of the attribute of agent used for computing state values, in ('state_value', 'state_value_target')
+        importance_weights : the ratio of sampling policy probs over evaluated policy probs, which allow unbiased offline learning. If None, no importance weights is applied.
+        return : a (T, 1) shaped torch tensor representing state values
+        '''
+        model = getattr(self, model)
+        values = rewards + (1 - dones) * self.gamma * model(next_observations)
+        if importance_weights is None:
+            return values
+        else:
+            return values * importance_weights
+    
+    def compute_SARSA(self, rewards, next_observations, next_actions, dones, model = 'action_value', importance_weights = None):
+        '''Compute the 1 step SARSA estimates Q(s,a) of action values over one episode: Q_pi(St, At) = E_mu[Rt + g * (1-Dt) * r_t+1 * Q_pi(St+1, At+1)]
+        observations, actions, rewards, next_observations, next_actions, dones : (T, *dims) shaped torch tensors sampled with policy mu
+        model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
+        importance_weights : the ratio of sampling policy probs over evaluated policy probs, which allow unbiased offline learning. If None, no importance weights is applied.
+        return : a (T, 1) shaped torch tensor representing action values
+        '''
+        model = getattr(self, model)
+        
+        Q_s_future = self.QSA(model, next_observations, next_actions)
+        
+        if importance_weights is None:
+            return rewards + (1 - dones) * self.gamma * Q_s_future
+        else:
+            next_importance_weights = torch.roll(importance_weights, shifts = -1, dims = 0)
+            return rewards + (1 - dones) * self.gamma * next_importance_weights * Q_s_future
+    
+    def compute_SARSA_Expected(self, rewards, next_observations, dones, model = 'action_value'):
+        '''Compute the 1 step SARSA-Expected estimates Q(s,a) of action values : Q_pi(St, At) = E_mu[Rt + g * (1-Dt) * Q_pi(St+1, pi(St+1))]
+        observations, actions, rewards, next_observations, dones : (T, *dims) shaped torch tensors sampled with policy mu
         model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
         return : a (T, 1) shaped torch tensor representing state values
         '''
         model = getattr(self, model)
-        
-        if Q_scalar :
-            Q_s_future = model(next_observations, next_actions)
-        else:
-            raise
+        next_actions = self.pi(next_observations).long()
+        Q_s_future = self.QSA(model, next_observations, next_actions)
         
         return rewards + (1 - dones) * self.gamma * Q_s_future
     
-    
-    def compute_SARSA_n_step(self, rewards, next_observations, next_actions, dones):
-        '''Compute the 1 step TD estimates V(s) of state values.
-        observations, actions, rewards, next_observations, next_actions : (T, *dims) shaped torch tensors
+    def compute_SARSA_n_step(self, rewards, observations, actions, model = 'action_value', importance_weights = None):
+        '''Compute the n step SARSA estimates Q(s,a) of action values over one episode: Q_pi(St, At) = E_mu[Rt + g * r_t+1 * Rt+1 + g² * r_t+1*r_t+2 * Rt+2 + g^3 * r_t+1*r_t+2*r_t+3 * Q(St+3, At+3)]
+        observations, actions, rewards, next_observations, next_actions, dones : (T, *dims) shaped torch tensors sampled with policy mu
+        importance_weights : the ratio of sampling policy probs over evaluated policy probs, which allow unbiased offline learning. If None, no importance weights is applied.
         model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
         return : a (T, 1) shaped torch tensor representing state values
         '''
-        raise #To implement
-    
-    
-    def compute_TD(self, observations, actions, rewards, next_observations, dones, model = 'state_value'):
-        '''Compute the 1 step TD estimates V(s) of state values.
-        rewards : a (T, 1) shaped torch tensor representing rewards
-        observations : a (T, *dims) shaped torch tensor representing observations
-        model : the name of the attribute of agent used for computing state values, in ('state_value', 'state_value_target')
-        return : a (T, 1) shaped torch tensor representing state values
-        '''
         model = getattr(self, model)
-        raise   #test phase
-        return rewards + (1 - dones) * self.gamma * model(next_observations)
+        rewards = rewards[:, 0]
+        q_values = self.QSA(model, observations, actions)[:, 0]
+        T = len(rewards)
+        n = self.n_step
+        Q = [None for _ in range(T)]
+        U = 0
+        t = T - 1
+        while t >= 0:
+            if t >= T - n:
+                U = rewards[t] + self.gamma * U
+                Q[t] = U
+            else:
+                U = rewards[t] + self.gamma * U - self.gamma ** n * rewards[t+n]
+                Q[t] = U + self.gamma ** n * q_values[t+n]
+            t -= 1
+        Q = torch.Tensor(Q).unsqueeze(-1)
+        return Q    
+    
+    
+    
+    def compute_MC(self, rewards):
+        '''Compute the sums of future rewards (discounted) over one episode.
+        It is the Monte Carlo estimation of a state value : Rt + g * Rt+1 + ... + g^T-t * RT
+        rewards : a (T, 1) shaped torch tensor representing rewards
+        return : a (T, 1) shaped torch tensor representing discounted sum of future rewards
+        '''
+        #We compute the discounted sum of the next rewards dynamically.
+        T = len(rewards)
+        rewards = rewards[:, 0]
+        future_rewards =  [None for _ in range(T)] + [0]
+        t = T - 1
+        while t >= 0:   
+            future_rewards[t] = rewards[t] + self.gamma * future_rewards[t+1]
+            t -= 1
+        future_rewards.pop(-1)
+        future_rewards = torch.Tensor(future_rewards).unsqueeze(-1)          
+        return future_rewards
     
     
     def compute_TD_n_step(self, rewards, observations, model = "state_value"):
@@ -112,27 +185,7 @@ class AGENT(ABC):
         state_values_to_add = torch.concat((state_values, torch.zeros(n, 1)), axis = 0)[n:]
         
         V_targets = n_next_rewards + state_values_to_add
-        return V_targets    
-        
-        
-    def compute_MC(self, rewards):
-        '''Compute the sums of future rewards (discounted) over one episode.
-        It is the Monte Carlo estimation of a state value : Rt + g * Rt+1 + ... + g^T-t * RT
-        rewards : a (T, 1) shaped torch tensor representing rewards
-        return : a (T, 1) shaped torch tensor representing discounted sum of future rewards
-        '''
-        #We compute the discounted sum of the next rewards dynamically.
-        T = len(rewards)
-        rewards = rewards[:, 0]
-        future_rewards =  [None for _ in range(T)] + [0]
-        t = T - 1
-        while t >= 0:   
-            future_rewards[t] = rewards[t] + self.gamma * future_rewards[t+1]
-            t -= 1
-        future_rewards.pop(-1)
-        future_rewards = torch.Tensor(future_rewards).unsqueeze(-1)          
-        return future_rewards
-    
+        return V_targets        
     
     def compute_GAE(self, rewards, observations):
         '''Compute the Generalized Advantage Estimator (GAE) of advantage function over one episode.
@@ -157,6 +210,10 @@ class AGENT(ABC):
         A_GAE.pop(-1)
         A_GAE = torch.Tensor(A_GAE).unsqueeze(-1)                
         return A_GAE
+       
+       
+       
+       
        
 
 #Use the following agent as a model for minimum restrictions on AGENT subclasses :

@@ -68,7 +68,7 @@ class PPO(AGENT):
         values = dict()
         self.step += 1
         
-        #Learn every n end of episodes
+        #Learn only at the end of episodes, and only every train_freq_episodes episodes.
         if not self.memory.done:
             return
         self.episode += 1
@@ -88,8 +88,7 @@ class PPO(AGENT):
             #Scaling the rewards
             if self.reward_scaler is not None:
                 rewards = rewards / self.reward_scaler
-            #Compute V and A
-            # A_episode = self.compute_TD(rewards, observations) - self.state_value(observations)
+            #Compute V and A on one episode
             A_episode = self.compute_GAE(rewards, observations)
             V_targets_episode = self.compute_TD_n_step(rewards, observations, model = 'state_value_target')
             advantages.append(A_episode)
@@ -114,7 +113,7 @@ class PPO(AGENT):
         actions = actions.to(dtype = torch.int64)
         rewards = rewards.float()
         
-        #We perform gradient descent on K epochs on T datas with minibatch of size M <= T.
+        #We perform gradient descent on n_epochs epochs on T datas with minibatch of size batch_size <= T. Where T is the sum of the lenghts of all episodes.
         policy_new = deepcopy(self.policy)
         opt_policy = optim.Adam(lr = self.learning_rate_actor, params=policy_new.parameters())           
         n_batch = math.ceil(len(observations) / self.batch_size)
@@ -137,7 +136,7 @@ class PPO(AGENT):
 
                 #Error on critic : L = L(V(s), V_target)   with V_target = r + gamma * (1-d) * V_target(s_next)
                 V_s = self.state_value(observations_batch)
-                critic_loss = F.smooth_l1_loss(V_s, V_targets_batch).mean()
+                critic_loss = nn.MSELoss(V_s, V_targets_batch).mean()
                 
                 #Entropy : H = sum_a(- log(p) * p)      where p = pi_theta(a|s)
                 log_pi_theta_s_a = torch.log(pi_theta_new_s_a)
@@ -182,16 +181,9 @@ class PPO(AGENT):
     def remember(self, observation, action, reward, done, next_observation, info={}, **param):
         '''Save elements inside memory.
         *arguments : elements to remember, as numerous and in the same order as in self.memory.MEMORY_KEYS
-        return : metrics, a list of metrics computed during this remembering step.
         '''
         prob = self.last_prob.detach()
         self.memory.remember((observation, action, reward, done, prob))
-        # self.memory_transition.remember((observation, action, reward, done, prob, info))
-        # if done:
-        #     self.episode_ended = True
-        #     episode = self.memory_transition.sample(method = 'all', as_tensor=True)
-        #     self.memory_transition.__empty__()
-        #     self.memory_episodes.remember((episode,))
             
         #Save metrics
         values = {"obs" : observation, "action" : action, "reward" : reward, "done" : done}

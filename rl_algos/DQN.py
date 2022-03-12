@@ -96,23 +96,16 @@ class DQN(AGENT):
         if self.reward_scaler is not None:
             rewards = rewards / self.reward_scaler
         
-        # Estimated Q values
-        if not self.double_q_learning:
-            #Simple learning : Q(s,a) = r + gamma * max_a'(Q_target(s_next, a')) * (1-d)  | s_next and r being the result of action a taken in observation s
-            future_Q_s_a = self.action_value_target(next_observations)
-            future_Q_s, bests_a = torch.max(future_Q_s_a, dim = 1, keepdim=True)
-            Q_s_predicted = rewards + self.gamma * future_Q_s * (1 - dones)  #(n_sampled,)
-        else:
-            #Double Q Learning : Q(s,a) = r + gamma * Q_target(s_next, argmax_a'(Q(s_next, a')))
-            future_Q_s_a = self.action_value(next_observations)
-            future_Q_s, bests_a = torch.max(future_Q_s_a, dim = 1, keepdim=True)
-            future_Q_s_a_target = self.action_value_target(next_observations)
-            future_Q_s_target = torch.gather(future_Q_s_a_target, dim = 1, index= bests_a)
-            
-            Q_s_predicted = rewards + self.gamma * future_Q_s_target * (1 - dones)
+        #Double Q Learning : Q(s,a) = r + gamma * Q_target(s_next, argmax_a'(Q(s_next, a')))
+        future_Q_s_a = self.action_value(next_observations)
+        future_Q_s, bests_a = torch.max(future_Q_s_a, dim = 1, keepdim=True)
+        future_Q_s_a_target = self.action_value_target(next_observations)
+        future_Q_s_target = torch.gather(future_Q_s_a_target, dim = 1, index= bests_a)
         
+        Q_s_predicted = rewards + self.gamma * future_Q_s_target * (1 - dones)
+    
         #Gradient descent on Q network
-        criterion = nn.SmoothL1Loss()
+        criterion = torch.nn.MSELoss()
         for _ in range(self.gradients_steps):
             self.opt.zero_grad()
             Q_s_a = self.action_value(observations)
@@ -125,15 +118,9 @@ class DQN(AGENT):
             self.opt.step()
         
         #Update target network
-        if self.update_method == "periodic":
-            if self.step % self.target_update_interval == 0:
-                self.action_value_target = deepcopy(self.action_value)
-        elif self.update_method == "soft":
-            for phi, phi_target in zip(self.action_value.parameters(), self.action_value_target.parameters()):
-                phi_target.data = self.tau * phi_target.data + (1-self.tau) * phi.data    
-        else:
-            print(f"Error : update_method {self.update_method} not implemented.")
-            sys.exit()
+        for phi, phi_target in zip(self.action_value.parameters(), self.action_value_target.parameters()):
+            phi_target.data = self.tau * phi_target.data + (1-self.tau) * phi.data    
+       
 
         #Save metrics*
         values["critic_loss"] = loss.detach().numpy()
