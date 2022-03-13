@@ -59,11 +59,11 @@ class AGENT(ABC):
         return Q_s
     
     def pi(self, observations):
-        '''Choose action without impacting training.
+        '''Return actions corresponding to current evaluated policy.
         observations : a (T, *dims) shaped tensor representing observations
-        actions : a (T, *dim_actions) shaped tensor reprensenting actions taken
+        return : a (T, *dim_actions) shaped tensor reprensenting actions taken
         '''
-        return torch.Tensor([self.act(observation = observation, training = False) for observation in observations.numpy()]).unsqueeze(dim = -1)
+        return torch.Tensor([self.act(observation = observation, training = False) for observation in observations.numpy()]).unsqueeze(dim = -1).long()
     
     def compute_TD(self, rewards, next_observations, dones, model = 'state_value', importance_weights = None):
         '''Compute the 1 step TD estimates V(s) of state values : V_pi(St) = E_mu[imp_weights_t * (Rt + g * V(St+1))]
@@ -100,10 +100,10 @@ class AGENT(ABC):
         '''Compute the 1 step SARSA-Expected estimates Q(s,a) of action values : Q_pi(St, At) = E_mu[Rt + g * (1-Dt) * Q_pi(St+1, pi(St+1))]
         observations, actions, rewards, next_observations, dones : (T, *dims) shaped torch tensors sampled with policy mu
         model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
-        return : a (T, 1) shaped torch tensor representing state values
+        return : a (T, 1) shaped torch tensor representing action values
         '''
         model = getattr(self, model)
-        next_actions = self.pi(next_observations).long()
+        next_actions = self.pi(next_observations)
         Q_s_future = self.QSA(model, next_observations, next_actions)
         
         return rewards + (1 - dones) * self.gamma * Q_s_future
@@ -113,7 +113,7 @@ class AGENT(ABC):
         observations, actions, rewards, next_observations, next_actions, dones : (T, *dims) shaped torch tensors sampled with policy mu
         importance_weights : the ratio of sampling policy probs over evaluated policy probs, which allow unbiased offline learning. If None, no importance weights is applied.
         model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
-        return : a (T, 1) shaped torch tensor representing state values
+        return : a (T, 1) shaped torch tensor representing action values
         '''
         model = getattr(self, model)
         rewards = rewards[:, 0]
@@ -123,17 +123,79 @@ class AGENT(ABC):
         Q = [None for _ in range(T)]
         U = 0
         t = T - 1
-        while t >= 0:
-            if t >= T - n:
-                U = rewards[t] + self.gamma * U
-                Q[t] = U
-            else:
-                U = rewards[t] + self.gamma * U - self.gamma ** n * rewards[t+n]
-                Q[t] = U + self.gamma ** n * q_values[t+n]
-            t -= 1
+        if importance_weights is None:
+            while t >= 0:
+                if t >= T - n:
+                    U = rewards[t] + self.gamma * U
+                    Q[t] = U
+                else:
+                    U = rewards[t] + self.gamma * U - self.gamma ** n * rewards[t+n]
+                    Q[t] = U + self.gamma ** n * q_values[t+n]
+                t -= 1
+                
+        else:
+            importance_weights = importance_weights[:,0]
+            next_imp_weight_t = 1
+            while t >= 0:
+                ratio_products = torch.prod(importance_weights[t+1:t+1+n], 0)
+                if t >= T - n:
+                    U = rewards[t] + self.gamma * U * next_imp_weight_t
+                    Q[t] = U
+                else:   
+                    U = rewards[t] + self.gamma * U * next_imp_weight_t - self.gamma ** n * ratio_products * rewards[t+n]
+                    Q[t] = U + self.gamma ** n * ratio_products * q_values[t+n]
+                    
+                next_imp_weight_t = importance_weights[t]   #r_t+1
+                t -= 1
+                
+                
         Q = torch.Tensor(Q).unsqueeze(-1)
         return Q    
     
+    def compute_SARSA_n_step_Expected(self, observations, rewards, model = 'action_value', importance_weights = None):
+        '''Compute the n step SARSA-Expected estimates Q(s,a) of action values over one episode: Q_pi(St, At) = E_mu[Rt + g * r_t+1 * Rt+1 + g² * r_t+1*r_t+2 * Rt+2 + g^3 * r_t+1*r_t+2 * Q(St+3, pi(St+3))]
+        observations, rewards : (T, *dims) shaped torch tensors sampled with policy mu
+        importance_weights : the ratio of sampling policy probs over evaluated policy probs, which allow unbiased offline learning. If None, no importance weights is applied.
+        model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
+        return : a (T, 1) shaped torch tensor representing action values
+        '''
+        model = getattr(self, model)
+        rewards = rewards[:, 0]
+        actions_pi = self.pi(observations)
+        q_values = self.QSA(model, observations, actions_pi)[:, 0]
+        T = len(rewards)
+        n = self.n_step
+        Q = [None for _ in range(T)]
+        U = 0
+        t = T - 1
+        if importance_weights is None:
+            while t >= 0:
+                if t >= T - n:
+                    U = rewards[t] + self.gamma * U
+                    Q[t] = U
+                else:
+                    U = rewards[t] + self.gamma * U - self.gamma ** n * rewards[t+n]
+                    Q[t] = U + self.gamma ** n * q_values[t+n]
+                t -= 1
+                
+        else:
+            importance_weights = importance_weights[:,0]
+            next_imp_weight_t = 1
+            while t >= 0:
+                ratio_products = torch.prod(importance_weights[t+1:t+n], 0)
+                if t >= T - n:
+                    U = rewards[t] + self.gamma * U * next_imp_weight_t
+                    Q[t] = U
+                else:   
+                    U = rewards[t] + self.gamma * U * next_imp_weight_t - self.gamma ** n * ratio_products * importance_weights[t+n] * rewards[t+n]
+                    Q[t] = U + self.gamma ** n * ratio_products * q_values[t+n]
+                    
+                next_imp_weight_t = importance_weights[t]   #r_t+1
+                t -= 1
+                
+                
+        Q = torch.Tensor(Q).unsqueeze(-1)
+        return Q  
     
     
     def compute_MC(self, rewards):
