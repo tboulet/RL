@@ -47,16 +47,20 @@ class AGENT(ABC):
     
     
     
-    def QSA(self, model, observations, actions):
+    def QSA(self, model, observations, actions, Q_scalar = False):
         '''Compute Q(S,A) as a (T, 1) batch of scalar values.
         model : action value model
         observations : a (T, *dims) shaped tensor
         actions : a (T, 1) shaped tensor
-        return : a (T, 1) shaped tensor [Q(s,a) for s,a in zip(S, A)]
+        Q_scalar : whether Q is returned as a scalar or as a vector of Q values for a state
+        return : a (T, 1) shaped tensor [Q(s,a) for s,a in zip(S, A)] or a (T, n_actions) shaped tensor
         '''
-        Q_s_a = model(observations)
-        Q_s = Q_s_a.gather(dim = 1, index = actions)
-        return Q_s
+        if not Q_scalar:
+            Q_s_a = model(observations)
+            Q_s = Q_s_a.gather(dim = 1, index = actions)
+            return Q_s
+        else:
+            return model(observations, actions)
     
     def pi(self, observations):
         '''Return actions corresponding to current evaluated policy.
@@ -79,7 +83,7 @@ class AGENT(ABC):
         else:
             return values * importance_weights
     
-    def compute_SARSA(self, rewards, next_observations, next_actions, dones, model = 'action_value', importance_weights = None):
+    def compute_SARSA(self, rewards, next_observations, next_actions, dones, model = 'action_value', importance_weights = None, Q_scalar = False):
         '''Compute the 1 step SARSA estimates Q(s,a) of action values over one episode: Q_pi(St, At) = E_mu[Rt + g * (1-Dt) * r_t+1 * Q_pi(St+1, At+1)]
         observations, actions, rewards, next_observations, next_actions, dones : (T, *dims) shaped torch tensors sampled with policy mu
         model : the name of the attribute of agent used for computing state values, in ('action_value', 'action_value_target')
@@ -87,8 +91,7 @@ class AGENT(ABC):
         return : a (T, 1) shaped torch tensor representing action values
         '''
         model = getattr(self, model)
-        
-        Q_s_future = self.QSA(model, next_observations, next_actions)
+        Q_s_future = self.QSA(model, next_observations, next_actions, Q_scalar=Q_scalar)
         
         if importance_weights is None:
             return rewards + (1 - dones) * self.gamma * Q_s_future

@@ -74,17 +74,18 @@ if __name__ == "__main__":
     except ImportError:
         raise Exception("You need to specify your config in config.py\nConfig template is available at div/config_template.py")
     
-    #ENV
+    #ENVIRONMENT
     from RL.ENV import create_env
     env = create_env()
     
-    #NETWORKS
-    from RL.NETWORKS import create_networks
-    networks = create_networks(env)
+    #FUNCTION APPROXIMATION
+    from RL.FA import create_functions
+    functions = create_functions(env)
     
     #AGENT
     from RL.RL_AGENTS import create_agent
-    agent = create_agent(networks)
+    agent = create_agent(functions)
+    
     
     #RUN
     run(agent, 

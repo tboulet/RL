@@ -7,9 +7,9 @@ from rl_algos.PPO import PPO
 from rl_algos.DDPG import DDPG
 
 
-def create_agent(networks):
+def create_agent(functions):
     '''Create an agent corresponding to the one specified in config.py.
-    networks : a dictionnary with name of function approximation types as string and FA as values.
+    functions : a dictionnary with name of function approximation types as string and FA as values.
     return : an agent
     '''
     try:
@@ -18,40 +18,42 @@ def create_agent(networks):
         raise Exception("You need to specify your agent name in config.py\nConfig template is available at div/config_template.py")
     
     if agent_name == 'q_table':
-        q_table = networks['q_table']
+        q_table = functions['q_table']
         agent = Q_TABLE(q_table)
    
     if agent_name == 'dqn':
-        action_value = networks['action_value']
+        action_value = functions['action_value']
         agent = DQN(action_value)
                 
     elif agent_name == 'reinforce':
-        actor = networks['actor']
+        actor = functions['actor']
         agent = REINFORCE(actor)
     
     elif agent_name == 'reinforce_offpolicy':
-        actor = networks['actor']
+        actor = functions['actor']
         agent = REINFORCE_OFFPOLICY(actor)
         
     elif agent_name == 'ac':
-        actor = networks['actor']
-        state_value = networks['state_value']
-        action_value = networks['action_value']
+        actor = functions['actor']
+        state_value = functions['state_value']
+        action_value = functions['action_value']
         agent = ACTOR_CRITIC(actor, action_value, state_value)
         
     elif agent_name == 'ppo':
-        actor = networks['actor']
-        state_value = networks['state_value']
+        actor = functions['actor']
+        state_value = functions['state_value']
         agent = PPO(actor, state_value)
         
     elif agent_name == 'ddpg':
-        actor = networks['actor']
-        action_value = networks['action_value']
+        actor = functions['actor']
+        action_value = functions['action_value']
         agent = DDPG(actor, action_value)
 
     elif agent_name == 'random_agent':
         agent = RANDOM_AGENT(2) 
     
+    else:
+        raise Exception(f"{agent_name} is not recognized among implemented agent in RL/RL_AGENTS.py")
     return agent
     
     

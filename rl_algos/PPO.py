@@ -136,7 +136,7 @@ class PPO(AGENT):
 
                 #Error on critic : L = L(V(s), V_target)   with V_target = r + gamma * (1-d) * V_target(s_next)
                 V_s = self.state_value(observations_batch)
-                critic_loss = nn.MSELoss(V_s, V_targets_batch).mean()
+                critic_loss = nn.MSELoss()(V_s, V_targets_batch).mean()
                 
                 #Entropy : H = sum_a(- log(p) * p)      where p = pi_theta(a|s)
                 log_pi_theta_s_a = torch.log(pi_theta_new_s_a)

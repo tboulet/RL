@@ -72,7 +72,7 @@ class DDPG(AGENT):
         #Compute targets of Q using SARSA
         next_actions = self.policy_target(next_observations)
         Q_s_targets = self.compute_SARSA(rewards, next_observations, next_actions, dones, 
-                                         Q_scalar=True, 
+                                        Q_scalar=True, 
                                          model="action_value_target",
                                             ).detach()
         

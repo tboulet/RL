@@ -7,7 +7,7 @@ wandb
 rbdl
 config.py
 CONFIGS.py
-NETWORKS.py
+FA.py
 models
 DQN_TP
 
